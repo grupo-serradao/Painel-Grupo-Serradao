@@ -1071,10 +1071,19 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 const DIAS=['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'];
-const META_RITMO_BOV=70;   // cab/hora
+const META_RITMO_BOV=70;   // cab/hora (vigente ≥ mai/2026)
 const META_RITMO_SUI=170;  // cab/hora
 const META_KHH_BOV=230;    // kg/homem/hora
 const META_KHH_SUI=175;    // kg/homem/hora
+
+// Retorna metas de produtividade/ritmo corretas para uma data de referência.
+// Houve mudança de metas em maio/2026.
+function getMetasProd(dataStr){
+  const CORTE=new Date('2026-05-01');
+  const d=dataStr?new Date(dataStr):new Date();
+  if(d<CORTE) return{ritmoB:100,ritmoS:200,khhB:329.41,khhS:188.24};
+  return{ritmoB:META_RITMO_BOV,ritmoS:META_RITMO_SUI,khhB:META_KHH_BOV,khhS:META_KHH_SUI};
+}
 let params={capBov:370,capSui:580,colabBov:90,colabSui:80,precosMiudos:{"Aorta":22.5,"Bucho":12.5,"Carne Industrial":17.5,"Colmeia":15.0,"Coração":8.0,"Couro":5.0,"Diafragma":25.0,"Esôfago":4.5,"Fígado":12.0,"Língua":10.5,"Lombinho":25.0,"Mocotó":12.0,"Omaso":22.5,"Pulmão":3.5,"Rabo":25.0,"Recortes":17.5,"Rins":2.5,"Sangria":18.6,"Tendão":13.0,"Traqueia":3.5,"Vergalho":25.0},metas:{Segunda:{bov:370,sui:500},Terça:{bov:370,sui:500},Quarta:{bov:370,sui:500},Quinta:{bov:370,sui:500},Sexta:{bov:370,sui:500},Sábado:{bov:200,sui:300},Domingo:{bov:0,sui:0}}};
 let dadosDia=null,historico=[];
 const pdfFiles={},pdfTexts={},pdfDates={},importFiles={};
@@ -1843,9 +1852,10 @@ async function renderDashboard(){
   set('prod-colab-bov',(colabBovReal>0?tB/d.nd/colabBovReal:0).toFixed(1));
   set('prod-colab-sui',(colabSuiReal>0?tS/d.nd/colabSuiReal:0).toFixed(1));
   set('prod-ahh-bov',kgHHBov.toFixed(2));set('prod-ahh-sui',kgHHSui.toFixed(2));
-  const barBov=document.getElementById('prod-ahh-bov-bar');if(barBov)barBov.style.width=Math.min(kgHHBov/META_KHH_BOV*100,100)+'%';
-  const barSui=document.getElementById('prod-ahh-sui-bar');if(barSui)barSui.style.width=Math.min(kgHHSui/META_KHH_SUI*100,100)+'%';
-  renderCondenacaoReal(tB);renderCondenacaoAnimalCharts();await renderRendimentoReal(tB,tS);
+  const _mpDia=getMetasProd(d.data);
+  const barBov=document.getElementById('prod-ahh-bov-bar');if(barBov)barBov.style.width=Math.min(kgHHBov/_mpDia.khhB*100,100)+'%';
+  const barSui=document.getElementById('prod-ahh-sui-bar');if(barSui)barSui.style.width=Math.min(kgHHSui/_mpDia.khhS*100,100)+'%';
+  renderCondenacaoReal(tB);renderCondenacaoAnimalCharts();await renderRendimentoReal(tB,tS,kgBovTotal);
   renderProdutividadeReal();
   if(document.getElementById('panel-paradas')?.style.display!=='none') renderParadasReal();
   calcularIndicadoresExtra(tB,tS,d.nd);
@@ -2155,7 +2165,7 @@ async function renderProdutividadeReal(){
       if(tb){porMes[m].horasBov+=tb.tempoMin/60;porMes[m].colabBov+=tb.operadores;porMes[m].kgBov+=tb.totalKg||0;porMes[m].diasReais++;}
       if(ts){porMes[m].horasSui+=ts.tempoMin/60;porMes[m].colabSui+=ts.operadores;porMes[m].kgSui+=ts.totalKg||0;porMes[m].diasReaisS++;}
     });
-    grupos=Object.keys(porMes).sort().map(m=>({label:nomesMeses[parseInt(m)],...porMes[m]}));
+    grupos=Object.keys(porMes).sort().map(m=>({label:nomesMeses[parseInt(m)],mesNum:parseInt(m),...porMes[m]}));
   }else{
     grupos=diasFiltrados.map(h=>{
       const tb=getDadosReais(h.data,'bovino');const ts=getDadosReais(h.data,'suíno')||getDadosReais(h.data,'suino');
@@ -2167,7 +2177,7 @@ async function renderProdutividadeReal(){
       const mKgCabSui=taComKgSuiD.length?taComKgSuiD.reduce((a,t)=>a+t.totalKg/t.qtd,0)/taComKgSuiD.length:0;
       const kgBovDia=tb&&tb.totalKg>0?tb.totalKg:(mKgCabBov>0?mKgCabBov*bovDia:0);
       const kgSuiDia=ts&&ts.totalKg>0?ts.totalKg:(mKgCabSui>0?mKgCabSui*suiDia:0);
-      return{label:fmtBR(h.data),bov:bovDia,sui:suiDia,metaBov:metaBovDoDia(h),metaSui:metaSuiDoDia(h),dias:1,
+      return{label:fmtBR(h.data),dataRef:h.data,bov:bovDia,sui:suiDia,metaBov:metaBovDoDia(h),metaSui:metaSuiDoDia(h),dias:1,
         horasBov:tb?tb.tempoMin/60:0,horasSui:ts?ts.tempoMin/60:0,
         colabBov:tb?tb.operadores:0,colabSui:ts?ts.operadores:0,
         kgBov:kgBovDia,kgSui:kgSuiDia,
@@ -2186,13 +2196,16 @@ async function renderProdutividadeReal(){
     // Kg/homem/hora — usa Total_Kg do TempoAbate se disponível
     const kgHHBov=g.kgBov>0&&horasBov>0&&colabBov>0?g.kgBov/(horasBov*colabBov):0;
     const kgHHSui=g.kgSui>0&&horasSui>0&&colabSui>0?g.kgSui/(horasSui*colabSui):0;
+    // Metas dinâmicas: usa data de referência do grupo para selecionar a vigência correta
+    const _dataRef=g.dataRef||(filtroAtual.ano&&g.mesNum!=null?`${filtroAtual.ano}-${String(g.mesNum).padStart(2,'0')}-01`:null);
+    const _mp=getMetasProd(_dataRef);
     labelsBov.push(g.label);
-    bovH.push(parseFloat(kgHHBov.toFixed(2)));bovHMeta.push(META_KHH_BOV);
-    suiH.push(parseFloat(kgHHSui.toFixed(2)));suiHMeta.push(META_KHH_SUI);
+    bovH.push(parseFloat(kgHHBov.toFixed(2)));bovHMeta.push(_mp.khhB);
+    suiH.push(parseFloat(kgHHSui.toFixed(2)));suiHMeta.push(_mp.khhS);
     ritmoB.push(parseFloat(abateHBov.toFixed(1)));ritmoS.push(parseFloat(abateHSui.toFixed(1)));
-    ritmoMetaB.push(META_RITMO_BOV);
-    ritmoMetaS.push(META_RITMO_SUI);
-    linhasTabela.push([g.label,kgHHBov.toFixed(2),abateHBov.toFixed(1),cabColBov.toFixed(1),farol(META_KHH_BOV>0?(kgHHBov-META_KHH_BOV)/META_KHH_BOV*100:0),kgHHSui.toFixed(2),abateHSui.toFixed(1),cabColSui.toFixed(1),farol(META_KHH_SUI>0?(kgHHSui-META_KHH_SUI)/META_KHH_SUI*100:0)]);
+    ritmoMetaB.push(_mp.ritmoB);
+    ritmoMetaS.push(_mp.ritmoS);
+    linhasTabela.push([g.label,kgHHBov.toFixed(2),abateHBov.toFixed(1),cabColBov.toFixed(1),farol(_mp.khhB>0?(kgHHBov-_mp.khhB)/_mp.khhB*100:0),kgHHSui.toFixed(2),abateHSui.toFixed(1),cabColSui.toFixed(1),farol(_mp.khhS>0?(kgHHSui-_mp.khhS)/_mp.khhS*100:0)]);
   });
   // Guarda dados para toggle
   window._prodKHH={labels:labelsBov,bovH,bovHMeta,suiH,suiHMeta,ritmoB,ritmoS,ritmoMetaB,ritmoMetaS};
@@ -2210,15 +2223,16 @@ function _renderKHH(tipo){
   const d=window._prodKHH;if(!d||!d.labels.length)return;
   const isBov=tipo==='bovino';
   const vals=isBov?d.bovH:d.suiH;
-  const meta=isBov?META_KHH_BOV:META_KHH_SUI;
-  const metaArr=vals.map(()=>meta);
+  const metaArr=(isBov?d.bovHMeta:d.suiHMeta)||[];
+  // Usa último ponto como valor de referência para legenda e cores (período mais recente)
+  const meta=metaArr.length?metaArr[metaArr.length-1]:(isBov?META_KHH_BOV:META_KHH_SUI);
   if(CI['chart-prod-bov'])CI['chart-prod-bov'].destroy();
   const ctx=document.getElementById('chart-prod-bov');if(!ctx)return;
   CI['chart-prod-bov']=new Chart(ctx,{
     type:'bar',
     data:{labels:d.labels,datasets:[
-      {label:'Real',data:vals,backgroundColor:vals.map(v=>corFarolProd(v,meta)),borderRadius:4,borderSkipped:false},
-      {label:`Meta (${meta})`,data:metaArr,type:'line',borderColor:'#374151',borderDash:[4,4],borderWidth:1.5,pointRadius:3,pointBackgroundColor:'#374151',fill:false}
+      {label:'Real',data:vals,backgroundColor:vals.map((v,i)=>corFarolProd(v,metaArr[i]||meta)),borderRadius:4,borderSkipped:false},
+      {label:`Meta`,data:metaArr,type:'line',borderColor:'#374151',borderDash:[4,4],borderWidth:1.5,pointRadius:3,pointBackgroundColor:'#374151',fill:false}
     ]},
     options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:40}},
       plugins:{
@@ -2227,7 +2241,7 @@ function _renderKHH(tipo){
             {text:'Dentro da meta (≥100%)',fillStyle:'#16a34a',strokeStyle:'#16a34a',pointStyle:'rectRounded'},
             {text:'Desvio ≤5%',fillStyle:'#ca8a04',strokeStyle:'#ca8a04',pointStyle:'rectRounded'},
             {text:'Fora da meta (<95%)',fillStyle:'#dc2626',strokeStyle:'#dc2626',pointStyle:'rectRounded'},
-            {text:`Meta (${meta})`,fillStyle:'transparent',strokeStyle:'#374151',lineWidth:2,pointStyle:'line'}
+            {text:`Meta`,fillStyle:'transparent',strokeStyle:'#374151',lineWidth:2,pointStyle:'line'}
           ]
         }},
         datalabels:{
@@ -2268,15 +2282,15 @@ function _renderRitmo(tipo){
   const d=window._prodKHH;if(!d||!d.labels.length)return;
   const isBov=tipo==='bovino';
   const vals=isBov?d.ritmoB:d.ritmoS;
-  const meta=isBov?META_RITMO_BOV:META_RITMO_SUI;
-  const metaArr=vals.map(()=>meta);
+  const metaArr=(isBov?d.ritmoMetaB:d.ritmoMetaS)||[];
+  const meta=metaArr.length?metaArr[metaArr.length-1]:(isBov?META_RITMO_BOV:META_RITMO_SUI);
   if(CI['chart-prod-ritmo'])CI['chart-prod-ritmo'].destroy();
   const ctx=document.getElementById('chart-prod-ritmo');if(!ctx)return;
   CI['chart-prod-ritmo']=new Chart(ctx,{
     type:'bar',
     data:{labels:d.labels,datasets:[
-      {label:'Real',data:vals,backgroundColor:vals.map(v=>corFarolProd(v,meta)),borderRadius:4,borderSkipped:false},
-      {label:`Meta (${meta})`,data:metaArr,type:'line',borderColor:'#374151',borderDash:[4,4],borderWidth:1.5,pointRadius:3,pointBackgroundColor:'#374151',fill:false}
+      {label:'Real',data:vals,backgroundColor:vals.map((v,i)=>corFarolProd(v,metaArr[i]||meta)),borderRadius:4,borderSkipped:false},
+      {label:`Meta`,data:metaArr,type:'line',borderColor:'#374151',borderDash:[4,4],borderWidth:1.5,pointRadius:3,pointBackgroundColor:'#374151',fill:false}
     ]},
     options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:40}},
       plugins:{
@@ -2329,9 +2343,10 @@ function renderVolTable(id,rows,metaTotal,total){
   const proprias=rows.filter(r=>EMPRESAS_PROPRIAS.includes(r.empresa));
   const terceiros=rows.filter(r=>!EMPRESAS_PROPRIAS.includes(r.empresa));
   const linhaEmp=(r,bold)=>{
-    const pct=mPE>0?(r.abatidos-mPE)/mPE*100:0;
+    const myMeta=r.previsto||mPE;
+    const pct=myMeta>0?(r.abatidos-myMeta)/myMeta*100:0;
     const tr=document.createElement('tr');
-    tr.innerHTML=`<td${bold?' style="font-weight:700"':''}>${r.empresa}</td><td class="r"><b>${fmt(r.abatidos)}</b></td><td class="r" style="color:var(--muted)">${fmt(r.previsto||mPE)}</td><td class="r">${farol(pct)}</td>`;
+    tr.innerHTML=`<td${bold?' style="font-weight:700"':''}>${r.empresa}</td><td class="r"><b>${fmt(r.abatidos)}</b></td><td class="r" style="color:var(--muted)">${fmt(myMeta)}</td><td class="r">${farol(pct)}</td>`;
     return tr;
   };
   if(proprias.length){
@@ -2363,12 +2378,11 @@ async function carregarTempoAbateDoSheets(){
       .map(r=>({
         data:String(r[0]).slice(0,10),
         animal:String(r[1]||'').trim(),
-        inicioBox:String(r[2]||''),
-        fimBox:String(r[3]||''),
-        qtd:pf(r[4]),
-        totalKg:pf(r[5]),
-        operadores:pf(r[6]),
-        tempoMin:pf(r[7])
+        // Colunas gravadas por salvarHorarioParadas(): [Data,Animal,Qtd,TotalKg,Operadores,TempoMin]
+        qtd:pf(r[2]),
+        totalKg:pf(r[3]),
+        operadores:pf(r[4]),
+        tempoMin:pf(r[5])
       }))
       .filter(r=>r.qtd>0);
     // Desduplicar por data+animal: fica com a linha de maior tempoMin
@@ -2703,7 +2717,7 @@ async function carregarMiudosCompletoDoSheets(){
   const pf=v=>{const s=String(v||0);return parseFloat(s.includes(',')&&s.includes('.')?s.replace(/\./g,'').replace(',','.'):s.replace(',','.'))||0;};
   try{const rows=await sheetsRead('Miudos');return rows.slice(1).filter(r=>r[0]&&String(r[0]).length>=10&&!String(r[0]).startsWith('undefined')).map(r=>({data:String(r[0]).slice(0,10),miudo:r[1],nrPecas:pf(r[2]),pesoKg:pf(r[3]),kgTotalAbate:pf(r[4]),pctReal:pf(r[5]),pctMeta:pf(r[6])}));}catch(e){return[];}
 }
-async function renderRendimentoReal(tB,tS){
+async function renderRendimentoReal(tB,tS,kgTotalFromTA=0){
   if(!miudosCache) miudosCache=await carregarMiudosCompletoDoSheets();
   if(!carcacaCache) carcacaCache=await carregarCarcacaDoSheets();
   // Garante que preços foram carregados do Sheets antes de calcular
@@ -2760,7 +2774,9 @@ async function renderRendimentoReal(tB,tS){
     if(!kgTotalPorDia[r.data]||r.kgTotalAbate>kgTotalPorDia[r.data])
       kgTotalPorDia[r.data]=r.kgTotalAbate||0;
   });
-  const kgTotalAbatePeriodo=Object.values(kgTotalPorDia).reduce((a,b)=>a+b,0);
+  // Prefere o totalKg do TempoAbate (lançado pela equipe do setor, cobre todas as empresas).
+  // Fallback para kgTotalAbate do Miudos (salvo na hora do lançamento, só FV+Serradão).
+  const kgTotalAbatePeriodo=kgTotalFromTA>0?kgTotalFromTA:Object.values(kgTotalPorDia).reduce((a,b)=>a+b,0);
 
   // Calcula aproveitamento total aqui — mesma fonte do gráfico
   const pesoMiudoTotal=registros.reduce((a,r)=>a+(r.pesoKg||0),0);
@@ -2770,10 +2786,13 @@ async function renderRendimentoReal(tB,tS){
     const pesoTotal=m.pesos.reduce((a,b)=>a+b,0);
     // % real = peso total do miúdo / kg total abatido nos dias em que foi lançado
     // Usa kgTotalAbate que veio junto com cada linha — não usa abates do histórico
-    const pctMedioReal=kgTotalAbatePeriodo>0?(pesoTotal/kgTotalAbatePeriodo*100):0;
+    // Vergalho vem exclusivamente de bois → usa kgCarcacaBoiPeriodo como denominador
+    // Demais miúdos → usa kgTotalAbatePeriodo (boi + vaca)
+    const baseReal=m.nomeOriginal==='Vergalho'?kgCarcacaBoiPeriodo:kgTotalAbatePeriodo;
+    const pctMedioReal=baseReal>0?(pesoTotal/baseReal*100):0;
     const preco=getPreco(m.nomeOriginal);
-    // Base: kg total de carcaça do período (Vergalho usa só boi)
-    const base=m.nomeOriginal==='Vergalho'?kgCarcacaBoiPeriodo:kgTotalAbatePeriodo;
+    // Mesma base para calcular kg esperado
+    const base=baseReal;
     const kgEsperado=base*(m.meta/100);
     const diffKg=pesoTotal-kgEsperado;
     // Perda: só quando tem dado lançado (pesoTotal>0) e está abaixo da meta
@@ -3026,7 +3045,7 @@ async function carregarBenchmarkDoSheets(){
     if(Object.keys(novo).length>0){BENCHMARK_SETOR=novo;}
   }catch(e){/* Benchmark: usando fallback */}
 }
-const MIUDOS=[{nome:'Aorta',meta:0.08},{nome:'Bucho',meta:1.45},{nome:'Carne Industrial',meta:0.65},{nome:'Colmeia',meta:0.23},{nome:'Coração',meta:0.57},{nome:'Couro',meta:17.50},{nome:'Diafragma',meta:0.48},{nome:'Esôfago',meta:0.14},{nome:'Fígado',meta:2.08},{nome:'Língua',meta:0.36},{nome:'Lombinho',meta:0.25},{nome:'Mocotó',meta:0.54},{nome:'Omaso',meta:0.36},{nome:'Pulmão',meta:0.00},{nome:'Rabo',meta:0.57},{nome:'Recortes',meta:0.55},{nome:'Rins',meta:0.00},{nome:'Sangria',meta:1.17},{nome:'Tendão',meta:0.30},{nome:'Traqueia',meta:0.12},{nome:'Vergalho',meta:0.15}];
+const MIUDOS=[{nome:'Aorta',meta:0.07},{nome:'Bucho',meta:1.45},{nome:'Carne Industrial',meta:0.65},{nome:'Colmeia',meta:0.23},{nome:'Coração',meta:0.57},{nome:'Couro',meta:17.50},{nome:'Diafragma',meta:0.48},{nome:'Esôfago',meta:0.14},{nome:'Fígado',meta:2.08},{nome:'Língua',meta:0.36},{nome:'Lombinho',meta:0.25},{nome:'Mocotó',meta:0.54},{nome:'Omaso',meta:0.36},{nome:'Pulmão',meta:0.00},{nome:'Rabo',meta:0.57},{nome:'Recortes',meta:0.55},{nome:'Rins',meta:0.00},{nome:'Sangria',meta:1.17},{nome:'Tendão',meta:0.30},{nome:'Traqueia',meta:0.12},{nome:'Vergalho',meta:0.15}];
 function buildMiudosForm(){
   const tb=document.getElementById('tbody-miudos-form');if(!tb)return;tb.innerHTML='';
   const totalCab=(+(document.getElementById('m-machos')?.value)||0)+(+(document.getElementById('m-femeas')?.value)||0);
@@ -4030,14 +4049,24 @@ async function calcPesoMedio(diasFiltrados){
       const p=pesosIdx[h.data];
       if(!p) return;
 
-      // Bovino: peso total FV + Serradão dividido pelas cabeças abatidas
-      const kgBov=pf(p.pesoBovFV)+pf(p.pesoBovSerr);
-      const cabBov=(h.bovino||[]).reduce((a,e)=>a+(e.abatidos||0),0);
+      // Bovino: peso total FV + Serradão dividido pelas cabeças SÓ dessas empresas
+      // (os pesos vêm apenas de FV e Serradão — dividir pelo total de todas as empresas
+      //  geraria um peso/cab muito menor do que o real)
+      const kgBovFV=pf(p.pesoBovFV);
+      const kgBovSerr=pf(p.pesoBovSerr);
+      const kgBov=kgBovFV+kgBovSerr;
+      const cabBovFV=kgBovFV>0?((h.bovino||[]).find(e=>e.empresa==='Frigovitta')?.abatidos||0):0;
+      const cabBovSerr=kgBovSerr>0?((h.bovino||[]).find(e=>e.empresa==='Serradão')?.abatidos||0):0;
+      const cabBov=cabBovFV+cabBovSerr;
       if(kgBov>0&&cabBov>0){kgBovTotal+=kgBov;cabBovTotal+=cabBov;}
 
-      // Suíno: peso total Seali + Serradão dividido pelas cabeças abatidas
-      const kgSui=pf(p.pesoSuiSeali)+pf(p.pesoSuiSerr);
-      const cabSui=(h.suino||[]).reduce((a,e)=>a+(e.abatidos||0),0);
+      // Suíno: peso total Seali + Serradão dividido pelas cabeças SÓ dessas empresas
+      const kgSuiSeali=pf(p.pesoSuiSeali);
+      const kgSuiSerr=pf(p.pesoSuiSerr);
+      const kgSui=kgSuiSeali+kgSuiSerr;
+      const cabSuiSeali=kgSuiSeali>0?((h.suino||[]).find(e=>e.empresa==='Seali')?.abatidos||0):0;
+      const cabSuiSerr=kgSuiSerr>0?((h.suino||[]).find(e=>e.empresa==='Serradão')?.abatidos||0):0;
+      const cabSui=cabSuiSeali+cabSuiSerr;
       if(kgSui>0&&cabSui>0){kgSuiTotal+=kgSui;cabSuiTotal+=cabSui;}
     });
 
