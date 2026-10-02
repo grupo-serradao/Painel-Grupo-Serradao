@@ -1851,7 +1851,8 @@ async function renderDashboard(){
   set('prod-bov-h',ritmoBov.toFixed(1));set('prod-sui-h',ritmoSui.toFixed(1));
   set('prod-colab-bov',(colabBovReal>0?tB/d.nd/colabBovReal:0).toFixed(1));
   set('prod-colab-sui',(colabSuiReal>0?tS/d.nd/colabSuiReal:0).toFixed(1));
-  set('prod-ahh-bov',kgHHBov.toFixed(2));set('prod-ahh-sui',kgHHSui.toFixed(2));
+  set('prod-ahh-bov',kgHHBov>0?kgHHBov.toFixed(2):(temposBov.length>0?'—':'0.00'));
+  set('prod-ahh-sui',kgHHSui>0?kgHHSui.toFixed(2):(temposSui.length>0?'—':'0.00'));
   const _mpDia=getMetasProd(d.data);
   const barBov=document.getElementById('prod-ahh-bov-bar');if(barBov)barBov.style.width=Math.min(kgHHBov/_mpDia.khhB*100,100)+'%';
   const barSui=document.getElementById('prod-ahh-sui-bar');if(barSui)barSui.style.width=Math.min(kgHHSui/_mpDia.khhS*100,100)+'%';
@@ -2371,7 +2372,9 @@ let paradasCache=null;
 async function carregarTempoAbateDoSheets(){
   try{
     const rows=await sheetsRead('TempoAbate');
-    const pf=v=>{const s=String(v||'').replace(',','.');return parseFloat(s)||0;};
+    // pf: retorna 0 para strings ISO de data (bug clearContents() do Apps Script: célula numérica
+    // com formato de data volta como "1901-05-23T..." — parseFloat daria 1901, não 0)
+    const pf=v=>{if(!v&&v!==0)return 0;const s=String(v);if(/^\d{4}-\d{2}-\d{2}/.test(s))return 0;return parseFloat(s.replace(',','.'))||0;};
     // Mapeia todas as linhas com Qtd>0 — descarta linhas de parada/horário sem abate
     const todas=rows.slice(1)
       .filter(r=>r[0]&&String(r[0]).length>=10)
@@ -3338,6 +3341,7 @@ async function salvarMiudos(){
   al.textContent=ok?`✓ ${mm.length} miúdos e condenação salvos no Sheets!`:'✕ Erro ao salvar.';
   btn.disabled=false;btn.textContent='Salvar no Sheets';
   setTimeout(()=>{al.className='alert hidden';},4000);
+  if(ok){miudosCache=null;condenacaoCache=null;}
   atualizarStatusDia(date);
 }
 
@@ -3431,6 +3435,7 @@ async function salvarCondenacaoAnimalClick(){
   if(!rows.length){if(al){al.className='alert err';al.textContent='Nenhum animal para salvar';al.style.display='';setTimeout(()=>al.style.display='none',3000);}return;}
   try{
     await sheetsAppend('Condenacao',rows);
+    condenacaoCache=null;
     if(al){al.className='alert ok';al.textContent=`✓ ${rows.length} animal(is) salvos`;al.style.display='';}
     animaisCondLista=[];renderAnimaisCond();
     setTimeout(()=>{if(al)al.style.display='none';},3000);
