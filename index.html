@@ -996,6 +996,21 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
           </div>
           <div style="font-size:10px;color:var(--muted);margin-top:6px">A URL é salva no navegador. Siga o guia para configurar o Apps Script.</div>
         </div>
+
+        <!-- RECONSTRUTOR DE ABAS -->
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:14px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:10px">🔧 Reconstrutor de Abas</div>
+          <div style="font-size:12px;color:var(--text);margin-bottom:10px;line-height:1.5">
+            Relê todos os dados do Sheets, limpa cada aba (removendo formatação corrompida) e reescreve os dados.
+            Use após corrigir o <code style="background:var(--border);padding:1px 4px;border-radius:3px">clearContents()</code> → <code style="background:var(--border);padding:1px 4px;border-radius:3px">clear()</code> no Apps Script.
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <button class="btn btn-primary" id="btn-reconstruir" onclick="reconstruirAbas()">▶ Executar Reconstrução</button>
+            <span id="reconstrutor-status" style="font-size:11px;color:var(--muted)"></span>
+          </div>
+          <div id="reconstrutor-log" style="display:none;margin-top:10px;font-size:11px;font-family:monospace;background:#0f0f0f;color:#22d3ee;padding:10px;border-radius:var(--r);line-height:1.7;max-height:180px;overflow-y:auto"></div>
+        </div>
+
         <div style="margin-bottom:14px">
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Capacidade instalada</div>
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
@@ -1272,6 +1287,57 @@ function salvarURLScript(){
   localStorage.setItem('frigobet-script-url',url);
   const st=document.getElementById('status-script-url');
   if(st){st.textContent='✓ Salvo!';setTimeout(()=>st.textContent='',3000);}
+}
+
+async function reconstruirAbas(){
+  const btn=document.getElementById('btn-reconstruir');
+  const statusEl=document.getElementById('reconstrutor-status');
+  const logEl=document.getElementById('reconstrutor-log');
+  const set=t=>{if(statusEl)statusEl.textContent=t;};
+  const log=(txt,err)=>{
+    if(!logEl)return;
+    logEl.style.display='block';
+    const span=document.createElement('span');
+    span.style.color=err?'#f87171':'#22d3ee';
+    span.textContent=txt+'\n';
+    logEl.appendChild(span);
+    logEl.scrollTop=logEl.scrollHeight;
+  };
+  if(btn)btn.disabled=true;
+  if(logEl){logEl.innerHTML='';logEl.style.display='block';}
+  const abas=['Abates','Historico_Diario','TempoAbate','Paradas','Pesos','Condenacao','Carcaca','Miudos'];
+  let ok=0,falhas=0;
+  for(const aba of abas){
+    try{
+      set(`Lendo ${aba}...`);
+      const rows=await sheetsRead(aba);
+      set(`Limpando ${aba}...`);
+      await sheetsClearRange(aba);
+      if(rows.length>0){
+        set(`Reescrevendo ${aba} (${rows.length} linhas)...`);
+        // Parte em lotes de 500 para evitar timeout
+        for(let i=0;i<rows.length;i+=500){
+          await sheetsAppend(aba,rows.slice(i,i+500));
+        }
+      }
+      log(`✓ ${aba}: ${rows.length} linhas reescritas`);
+      ok++;
+    }catch(e){
+      log(`✕ ${aba}: ${e.message}`,true);
+      falhas++;
+    }
+  }
+  // Invalida todos os caches
+  tempoAbateCache=null;paradasCache=null;miudosCache=null;
+  carcacaCache=null;condenacaoCache=null;pesosCache=null;
+  set(`Concluído: ${ok} abas OK${falhas?', '+falhas+' com erro':''}`);
+  if(btn)btn.disabled=false;
+  log(`--- Reconstrução concluída: ${ok}/${abas.length} abas ---`);
+  // Recarrega dashboard
+  try{
+    const hist=await carregarHistoricoCompleto();
+    if(hist&&hist.length){historico=hist;renderDashboard();}
+  }catch(e){}
 }
 
 function getSemana(dataStr){const d=new Date(dataStr+'T12:00:00');const s=new Date(d.getFullYear(),d.getMonth(),1);return Math.ceil((d.getDate()+s.getDay())/7);}
