@@ -228,7 +228,7 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
       <span class="brand-name">Dashboard Operacional</span>
       <span class="brand-sub">Frigorífico Serradão · Atualização diária</span>
     </div>
-    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.06.30-206</span>
+    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.02-208</span>
   </div>
   <div class="top-right">
     <div class="legend">
@@ -2776,7 +2776,7 @@ async function renderRendimentoReal(tB,tS,kgTotalFromTA=0){
   });
   // Prefere o totalKg do TempoAbate (lançado pela equipe do setor, cobre todas as empresas).
   // Fallback para kgTotalAbate do Miudos (salvo na hora do lançamento, só FV+Serradão).
-  const kgTotalAbatePeriodo=kgTotalFromTA>0?kgTotalFromTA:Object.values(kgTotalPorDia).reduce((a,b)=>a+b,0);
+  const kgTotalAbatePeriodo=Object.values(kgTotalPorDia).reduce((a,b)=>a+b,0);/* fix Vergalho/rendimento: usa KgTotal dos Miudos (total real boi+vaca), nao Total_Kg subcontado do TempoAbate */
 
   // Calcula aproveitamento total aqui — mesma fonte do gráfico
   const pesoMiudoTotal=registros.reduce((a,r)=>a+(r.pesoKg||0),0);
