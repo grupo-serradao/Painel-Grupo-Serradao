@@ -4122,10 +4122,6 @@ async function calcularIndicadoresExtra(tB,tS,nd){
     if(pesoTotal>0){
       const aprov=pesoMiudos/pesoTotal*100;
       set('ind-aprov-animal',aprov.toFixed(2)+'%');
-      // Cor: >= 20% = verde, >= 16% = amarelo, < 16% = vermelho
-      const estAprov=aprov>=20?'ok':aprov>=16?'warn':'bad';
-      const labelAprov=aprov>=20?'Meta atingida':aprov>=16?'Abaixo da meta':'Crítico';
-      setIndColor('box-aprov-animal','ind-aprov-animal',estAprov,labelAprov,'ind-aprov-sub');
     }
   }
   // 3. Abates/dia média do período
