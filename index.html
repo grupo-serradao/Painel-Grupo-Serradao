@@ -231,7 +231,7 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
       <span class="brand-name">Dashboard Operacional</span>
       <span class="brand-sub">Frigorífico Serradão · Atualização diária</span>
     </div>
-    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.05-212</span>
+    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.05-213</span>
   </div>
   <div class="top-right">
     <div class="legend">
@@ -2822,7 +2822,7 @@ async function renderRendimentoReal(tB,tS,kgTotalFromTA=0){
     if(!match){
       match=Object.values(porMiudo).find(m=>norm(m.nomeOriginal)===key||key.includes(norm(m.nomeOriginal))||norm(m.nomeOriginal).includes(key));
     }
-    if(match){match.pesos.push(r.pesoKg);match.pctReais.push(r.pctReal);}
+    if(match){match.pesos.push(r.pesoKg);match.datas=(match.datas||[]);match.datas.push(r.data);match.pctReais.push(r.pctReal);}
   });
 
   const precos=params.precosMiudos||{};
@@ -2868,7 +2868,8 @@ async function renderRendimentoReal(tB,tS,kgTotalFromTA=0){
   if(kgTotalAbatePeriodo>0) set('ind-aprov-animal',(pesoMiudoTotal/kgTotalAbatePeriodo*100).toFixed(2)+'%');
 
   const linhas=Object.values(porMiudo).map(m=>{
-    const pesoTotal=m.pesos.reduce((a,b)=>a+b,0);
+    // Numerador e denominador com os mesmos dias (exclui dias incompletos)
+    const pesoTotal=m.pesos.reduce((a,b,i)=>a+(_datasIncompletasRend.has((m.datas||[])[i])?0:(b||0)),0);
     // % real = peso total do miúdo / kg total abatido nos dias em que foi lançado
     // Usa kgTotalAbate que veio junto com cada linha — não usa abates do histórico
     // Vergalho vem exclusivamente de bois → usa kgCarcacaBoiPeriodo como denominador
@@ -4109,10 +4110,15 @@ async function calcularIndicadoresExtra(tB,tS,nd){
     const perdaTotal=registros.reduce((a,r)=>a+(r.qtd*(precoMap[r.produto]||0)),0);
     const totalAbat=tB+tS;
     const custoPorAnimal=totalAbat>0?(perdaTotal/totalAbat):0;
+    // Sem registros de peças (aba só tem animal inteiro) → zero é falta de dado, não meta batida
+    if(!registros.length||totalAbat<=0){
+      set('ind-custo-cond-animal','—');
+      set('ind-perda-cond-total','—');
+      setIndColor('box-custo-cond','ind-custo-cond-animal',null,'Sem registro de peças condenadas','ind-custo-cond-sub');
+      setIndColor('box-perda-cond','ind-perda-cond-total',null,null,null);
+    }else{
     set('ind-custo-cond-animal','R$ '+custoPorAnimal.toFixed(2));
     set('ind-perda-cond-total',fmtMoeda(-perdaTotal));
-    // Só colore se houver abates no período (0 sem dados ≠ 0 sem condenação)
-    if(totalAbat>0){
       const estCusto=custoPorAnimal<3?'ok':custoPorAnimal<7?'warn':'bad';
       const labelCusto=custoPorAnimal<3?'Dentro da meta':'Acima do limite';
       setIndColor('box-custo-cond','ind-custo-cond-animal',estCusto,labelCusto,'ind-custo-cond-sub');
@@ -4139,11 +4145,14 @@ async function calcularIndicadoresExtra(tB,tS,nd){
       const estAprov=aprov>=27.54?'ok':aprov>=22?'warn':'bad';
       const labelAprov=(aprov>=27.54?'Meta atingida':aprov>=22?'Abaixo da meta':'Crítico')+sufixo;
       setIndColor('box-aprov-animal','ind-aprov-animal',estAprov,labelAprov,'ind-aprov-sub');
+    }else{
+      set('ind-aprov-animal','—');
+      setIndColor('box-aprov-animal','ind-aprov-animal',null,'Sem dados de miúdos no período','ind-aprov-sub');
     }
   }
   // 3. Abates/dia média do período
-  const mediaDiaBov=tB/nd;
-  const mediaDiaSui=tS/nd;
+  const mediaDiaBov=nd>0?tB/nd:0;
+  const mediaDiaSui=nd>0?tS/nd:0;
   set('ind-media-dia-bov',mediaDiaBov.toFixed(0)+' cab/dia');
   set('ind-media-dia-sui',mediaDiaSui.toFixed(0)+' cab/dia');
   // Cor média bov: usa meta média dos dias úteis (seg-sex)
