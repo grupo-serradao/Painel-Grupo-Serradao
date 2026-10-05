@@ -231,7 +231,7 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
       <span class="brand-name">Dashboard Operacional</span>
       <span class="brand-sub">Frigorífico Serradão · Atualização diária</span>
     </div>
-    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.05-215</span>
+    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.05-216</span>
   </div>
   <div class="top-right">
     <div class="legend">
@@ -3008,9 +3008,8 @@ async function carregarMiudosCompletoDoSheets(){
       if(!(kg[dt]>0))return;
       const t=tot[dt]/kg[dt]*100,c=(couro[dt]||0)/kg[dt]*100;
       if(t>38)miudosDiasExcluidos.set(dt,`total ${t.toFixed(1)}% (digitação)`);
-      else if(c<10)miudosDiasExcluidos.set(dt,`couro ${c.toFixed(1)}% (faltando)`);
       else if(c>22)miudosDiasExcluidos.set(dt,`couro ${c.toFixed(1)}% (dia vizinho)`);
-      else if(t<12)miudosDiasExcluidos.set(dt,`total ${t.toFixed(1)}% (incompleto)`);
+      else if(t<8)miudosDiasExcluidos.set(dt,`total ${t.toFixed(1)}% (incompleto)`);
     });
     if(miudosDiasExcluidos.size)console.log('[Miudos] dias excluídos:',[...miudosDiasExcluidos.entries()]);
     return regs.filter(r=>!miudosDiasExcluidos.has(r.data));
