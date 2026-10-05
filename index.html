@@ -384,7 +384,7 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
           <div class="efic-mini" style="border-left:3px solid var(--bov);text-align:center"><div class="efic-mini-label">Bovino</div><div class="efic-mini-val" id="sum-media-bov-m" style="font-size:18px">—</div><div class="efic-mini-label">kg/cab</div></div>
           <div class="efic-mini" style="border-left:3px solid var(--sui);text-align:center"><div class="efic-mini-label">Suíno</div><div class="efic-mini-val" id="sum-media-bov-f" style="font-size:18px">—</div><div class="efic-mini-label">kg/cab</div></div>
-          <div class="efic-mini" style="border-left:3px solid var(--muted);text-align:center"><div class="efic-mini-label">Média bov período</div><div class="efic-mini-val" id="vol-media-total" style="font-size:18px">—</div><div class="efic-mini-label">kg/cab</div></div>
+          <div class="efic-mini" style="border-left:3px solid var(--muted);text-align:center"><div class="efic-mini-label">Média geral</div><div class="efic-mini-val" id="vol-media-total" style="font-size:18px">—</div><div class="efic-mini-label">kg/cab (bov+sui)</div></div>
         </div>
       </div>
     </div>
@@ -4104,12 +4104,13 @@ async function calcularIndicadoresExtra(tB,tS,nd){
     const custoPorAnimal=totalAbat>0?(perdaTotal/totalAbat):0;
     set('ind-custo-cond-animal','R$ '+custoPorAnimal.toFixed(2));
     set('ind-perda-cond-total',fmtMoeda(-perdaTotal));
-    // Cor: custo < R$3 = verde, < R$7 = amarelo, >= R$7 = vermelho
-    const estCusto=custoPorAnimal<3?'ok':custoPorAnimal<7?'warn':'bad';
-    const labelCusto=custoPorAnimal<3?'Dentro da meta':'Acima do limite';
-    setIndColor('box-custo-cond','ind-custo-cond-animal',estCusto,labelCusto,'ind-custo-cond-sub');
-    // Perda total: same direction
-    setIndColor('box-perda-cond','ind-perda-cond-total',estCusto,null,null);
+    // Só colore se houver abates no período (0 sem dados ≠ 0 sem condenação)
+    if(totalAbat>0){
+      const estCusto=custoPorAnimal<3?'ok':custoPorAnimal<7?'warn':'bad';
+      const labelCusto=custoPorAnimal<3?'Dentro da meta':'Acima do limite';
+      setIndColor('box-custo-cond','ind-custo-cond-animal',estCusto,labelCusto,'ind-custo-cond-sub');
+      setIndColor('box-perda-cond','ind-perda-cond-total',estCusto,null,null);
+    }
   }
   // 2. Aproveitamento do animal
   if(miudosCache){
@@ -4122,6 +4123,10 @@ async function calcularIndicadoresExtra(tB,tS,nd){
     if(pesoTotal>0){
       const aprov=pesoMiudos/pesoTotal*100;
       set('ind-aprov-animal',aprov.toFixed(2)+'%');
+      // Meta oficial: 27,54% — ≥27,54% verde, ≥22% amarelo, <22% vermelho
+      const estAprov=aprov>=27.54?'ok':aprov>=22?'warn':'bad';
+      const labelAprov=aprov>=27.54?'Meta atingida':aprov>=22?'Abaixo da meta':'Crítico';
+      setIndColor('box-aprov-animal','ind-aprov-animal',estAprov,labelAprov,'ind-aprov-sub');
     }
   }
   // 3. Abates/dia média do período
@@ -4190,7 +4195,10 @@ async function calcPesoMedio(diasFiltrados){
 
     set('sum-media-bov-m',fn(mediaBov));
     set('sum-media-bov-f',fn(mediaSui));
-    set('vol-media-total',fn(mediaBov));
+    // terceiro box: média ponderada geral (bov+sui)
+    const cabTotal=cabBovTotal+cabSuiTotal;
+    const kgTotal=kgBovTotal+kgSuiTotal;
+    set('vol-media-total',cabTotal>0?fn(kgTotal/cabTotal):'—');
   }catch(e){console.warn('Peso médio:',e);}
 }
 </script>
