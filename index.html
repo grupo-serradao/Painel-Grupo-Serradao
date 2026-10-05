@@ -231,7 +231,7 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
       <span class="brand-name">Dashboard Operacional</span>
       <span class="brand-sub">Frigorífico Serradão · Atualização diária</span>
     </div>
-    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.05-214</span>
+    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.05-215</span>
   </div>
   <div class="top-right">
     <div class="legend">
@@ -1014,6 +1014,32 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
           <div id="reconstrutor-log" style="display:none;margin-top:10px;font-size:11px;font-family:monospace;background:#0f0f0f;color:#22d3ee;padding:10px;border-radius:var(--r);line-height:1.7;max-height:180px;overflow-y:auto"></div>
         </div>
 
+        <!-- CORRETOR DE DADOS -->
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:14px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:10px">✏️ Corretor de dados do Sheets</div>
+          <div style="font-size:12px;color:var(--text);margin-bottom:10px;line-height:1.5">
+            1) Clique em <b>Carregar valores atuais</b>. 2) Digite o valor correto onde souber (deixe vazio o que não souber). 3) Clique em <b>Aplicar correções</b>.
+            Só as células listadas são alteradas — nada é apagado. Requer o Apps Script v2.1.
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+            <button class="btn" onclick="corrCarregar()">① Carregar valores atuais</button>
+            <button class="btn btn-primary" id="btn-corr-aplicar" onclick="corrAplicar()" disabled>② Aplicar correções</button>
+            <button class="btn" id="btn-corr-desfazer" onclick="corrDesfazer()" style="display:none">↩ Desfazer última correção</button>
+            <span id="corr-status" style="font-size:11px;color:var(--muted)"></span>
+          </div>
+          <div style="overflow-x:auto"><table id="tbl-corr" style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="text-align:left;color:var(--muted)"><th style="padding:4px"></th><th style="padding:4px">Correção</th><th style="padding:4px">Onde</th><th style="padding:4px;text-align:right">Valor atual</th><th style="padding:4px">Valor correto</th></tr></thead><tbody></tbody></table></div>
+          <details style="margin-top:10px;font-size:12px"><summary style="cursor:pointer;color:var(--muted)">+ Adicionar outra correção</summary>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px">
+              <select id="corr-n-aba"><option>Miudos</option><option>TempoAbate</option><option>Pesos</option><option>Abates</option><option>Paradas</option><option>Carcaca</option></select>
+              <input type="date" id="corr-n-data">
+              <input type="text" id="corr-n-chave" placeholder="Item/animal/empresa (opcional)" style="width:190px">
+              <input type="text" id="corr-n-col" placeholder="Coluna (ex: D)" style="width:90px">
+              <button class="btn" onclick="corrAdicionar()">Adicionar</button>
+            </div>
+          </details>
+          <div id="corr-log" style="display:none;margin-top:10px;font-size:11px;font-family:monospace;background:#0f0f0f;color:#22d3ee;padding:10px;border-radius:var(--r);line-height:1.7;max-height:220px;overflow-y:auto"></div>
+        </div>
+
         <div style="margin-bottom:14px">
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Capacidade instalada</div>
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
@@ -1341,6 +1367,167 @@ async function reconstruirAbas(){
     const hist=await carregarHistoricoCompleto();
     if(hist&&hist.length){historico=hist;renderDashboard();}
   }catch(e){}
+}
+
+// ── CORRETOR DE DADOS ──
+// Usa a ação 'update' do Apps Script v2.1: altera só as células listadas e o script confere o valor antigo antes
+const CORR_CFG={Miudos:{d:0,k:[1]},TempoAbate:{d:0,k:[1]},Paradas:{d:0,k:[3,4]},Pesos:{d:1,k:[]},Abates:{d:0,k:[1,2]},Carcaca:{d:0,k:[1,2]}};
+const corrLetra=i=>String.fromCharCode(65+i);
+const corrNum=v=>{if(typeof v==='number')return v;let s=String(v??'').trim().replace(/\s/g,'');if(!s)return null;
+  // pt-BR: "33.000" e "1.966,52" usam ponto de milhar; "1966.52" (sem vírgula, sem grupo de 3) é decimal
+  if(s.includes(','))s=s.replace(/\./g,'').replace(',','.');else if(/^-?\d{1,3}(\.\d{3})+$/.test(s))s=s.replace(/\./g,'');
+  const n=Number(s);return isFinite(n)?n:null;};
+const corrMesmo=(a,b)=>{const x=corrNum(a),y=corrNum(b);return x!==null&&y!==null?Math.abs(x-y)<1e-9:String(a??'')===String(b??'');};
+const corrData=v=>typeof v==='number'?new Date(Math.round((v-25569)*86400000)).toISOString().slice(0,10):String(v||'').slice(0,10);
+const CORR_PESOS_COL=['','','Frigovitta bov','Serradão bov','Seali suíno','Serradão suíno'];
+let CORRECOES=[
+  {titulo:'FÍGADO 14/01/2026 — peso com vírgula no lugar errado',aba:'Miudos',data:'2026-01-14',chave:'FIGADO',col:3,sugestao:'1966,52',dica:'Normal: 1.100–1.700 kg/dia',pctMiudos:true},
+  {titulo:'10/01/2026 — kg total de bovinos do dia',tipo:'kgDia',data:'2026-01-10',dica:'Hoje: 20.782 kg p/ 135 bois (154 kg/cab). Use o valor do romaneio.'},
+  {titulo:'10/01/2026 — parada "Mesa de vísceras parou" (minutos)',aba:'Paradas',data:'2026-01-10',chave:'MESA DE VISCERAS PAROU',col:5,dica:'300 min num abate de 123 min'},
+  {titulo:'Pesos 02/02/2026 — colunas C e D trocadas',tipo:'troca',aba:'Pesos',data:'2026-02-02',cols:[2,3],dica:'Marque para trocar: fica 222 e 277 kg/cab'},
+  ...[['2025-05-31',2,'0 cabeças Frigovitta'],['2026-01-10',4,'0 cabeças Seali'],['2026-01-30',4,'0 cabeças Seali'],['2026-03-11',2,'0 cabeças Frigovitta'],
+      ['2026-03-27',4,'0 cabeças Seali'],['2026-07-24',4,'0 cabeças Seali'],['2025-09-02',3,'390 kg/cab'],['2025-12-04',5,'164 kg/cab'],
+      ['2026-02-21',2,'385 kg/cab'],['2026-02-23',5,'243 kg/cab'],['2026-03-25',5,'310 kg/cab'],['2026-04-08',3,'94 kg/cab'],
+      ['2026-04-14',5,'202 kg/cab'],['2026-04-30',3,'418 kg/cab'],['2026-05-11',3,'446 kg/cab'],['2026-07-31',2,'116 kg/cab'],
+      ['2026-07-31',3,'470 kg/cab'],['2026-08-20',2,'139 kg/cab'],['2026-08-20',3,'758 kg/cab'],['2026-08-28',3,'943 kg/cab'],['2026-09-03',4,'156 kg/cab']]
+    .map(([data,col,dica])=>({titulo:`Pesos ${data.split('-').reverse().join('/')} — ${CORR_PESOS_COL[col]}`,aba:'Pesos',data,col,dica:dica+' (ou corrija as cabeças na aba Abates)'}))
+];
+let corrLidas={}; // aba -> linhas como lidas do Sheets (índice 0 = cabeçalho = linha 1 da planilha)
+function corrLog(t,err){const el=document.getElementById('corr-log');if(!el)return;el.style.display='block';const s=document.createElement('span');s.style.color=err?'#f87171':'#22d3ee';s.textContent=t+'\n';el.appendChild(s);el.scrollTop=el.scrollHeight;}
+function corrAchar(rows,aba,data,chave){
+  const c=CORR_CFG[aba]||{d:0,k:[1]};const out=[];
+  rows.forEach((r,i)=>{if(i===0)return;if(corrData(r[c.d])!==data)return;
+    if(chave&&!c.k.some(k=>normNome(r[k]).includes(normNome(chave))))return;out.push(i);});
+  return out;
+}
+// Alterações {aba,i,col,novo} que uma correção gera (novo=null → só para mostrar)
+function corrAlteracoes(cx,novo){
+  if(cx.tipo==='kgDia'){
+    const ta=corrAchar(corrLidas.TempoAbate||[],'TempoAbate',cx.data,'bovino');
+    const mi=corrAchar(corrLidas.Miudos||[],'Miudos',cx.data).filter(i=>!/VERGALHO/i.test(String(corrLidas.Miudos[i][1])));
+    return[...ta.map(i=>({aba:'TempoAbate',i,col:3,novo})),...mi.map(i=>({aba:'Miudos',i,col:4,novo,pct:true}))];
+  }
+  if(cx.tipo==='troca'){
+    return corrAchar(corrLidas[cx.aba]||[],cx.aba,cx.data).flatMap(i=>{const row=corrLidas[cx.aba][i];
+      return[{aba:cx.aba,i,col:cx.cols[0],novo:novo?row[cx.cols[1]]:null},{aba:cx.aba,i,col:cx.cols[1],novo:novo?row[cx.cols[0]]:null}];});
+  }
+  return corrAchar(corrLidas[cx.aba]||[],cx.aba,cx.data,cx.chave).map(i=>({aba:cx.aba,i,col:cx.col,novo,pct:cx.pctMiudos}));
+}
+function corrRender(){
+  const tb=document.querySelector('#tbl-corr tbody');if(!tb)return;
+  tb.innerHTML=CORRECOES.map((cx,n)=>{
+    const alts=corrAlteracoes(cx,null);
+    let atual='—',onde='não encontrado no Sheets',ok=alts.length>0;
+    if(cx.tipo==='kgDia'){
+      const ta=alts.filter(a=>a.aba==='TempoAbate'),mi=alts.filter(a=>a.aba==='Miudos');
+      ok=ta.length===1;atual=ok?fmt(corrNum(corrLidas.TempoAbate[ta[0].i][3])):'—';
+      onde=`TempoAbate linha ${ok?ta[0].i+1:'?'} col D + Miudos col E (${mi.length} linhas)`;
+    }else if(cx.tipo==='troca'){
+      ok=alts.length===2;if(ok){const row=corrLidas[cx.aba][alts[0].i];atual=`C=${fmt(corrNum(row[2]))} · D=${fmt(corrNum(row[3]))}`;onde=`${cx.aba} linha ${alts[0].i+1}`;}
+    }else if(alts.length===1){atual=String(corrLidas[cx.aba][alts[0].i][cx.col]??'');onde=`${cx.aba} linha ${alts[0].i+1}, col ${corrLetra(cx.col)}`;}
+    else if(alts.length>1){onde=`${alts.length} linhas encontradas — seja mais específico`;ok=false;}
+    const input=cx.tipo==='troca'
+      ?`<label style="font-size:11px"><input type="checkbox" data-n="${n}" class="corr-troca" ${ok?'':'disabled'}> trocar</label>`
+      :`<input type="text" data-n="${n}" class="corr-val" value="${ok&&cx.sugestao&&!(alts.length===1&&corrMesmo(corrLidas[cx.aba][alts[0].i][cx.col],cx.sugestao))?cx.sugestao:''}" placeholder="não alterar" style="width:110px" ${ok?'':'disabled'}>`;
+    return`<tr style="border-top:1px solid var(--border2)"><td style="padding:4px">${ok?'':'⚠'}</td><td style="padding:4px">${cx.titulo}<div style="color:var(--muted);font-size:10px">${cx.dica||''}</div></td><td style="padding:4px;color:var(--muted)">${onde}</td><td style="padding:4px;text-align:right">${atual}</td><td style="padding:4px">${input}</td></tr>`;
+  }).join('');
+}
+async function corrCarregar(){
+  const st=document.getElementById('corr-status');st.textContent='Lendo Sheets...';
+  try{
+    const abas=[...new Set(CORRECOES.flatMap(c=>c.tipo==='kgDia'?['TempoAbate','Miudos']:[c.aba]))];
+    for(const a of abas)corrLidas[a]=await sheetsRead(a);
+    corrRender();st.textContent=`✓ Valores carregados (${abas.join(', ')})`;
+    document.getElementById('btn-corr-aplicar').disabled=false;
+  }catch(e){st.textContent='✕ '+e.message;}
+  corrMostrarDesfazer();
+}
+function corrAdicionar(){
+  const aba=document.getElementById('corr-n-aba').value,data=document.getElementById('corr-n-data').value;
+  const chave=document.getElementById('corr-n-chave').value.trim(),colL=document.getElementById('corr-n-col').value.trim().toUpperCase();
+  if(!data||!/^[A-Z]$/.test(colL)){alert('Informe a data e a coluna (uma letra, ex: D).');return;}
+  CORRECOES.push({titulo:`${aba} ${data.split('-').reverse().join('/')}${chave?' — '+chave:''} (col ${colL})`,aba,data,chave,col:colL.charCodeAt(0)-65,dica:'Correção manual',pctMiudos:aba==='Miudos'});
+  corrCarregar();
+}
+// Envia por aba; o Apps Script recusa a aba inteira se algum valor antigo não bater
+async function corrEnviar(celulasPorAba,feitas){
+  for(const[aba,cells]of Object.entries(celulasPorAba)){
+    for(let i=0;i<cells.length;i+=200){
+      const lote=cells.slice(i,i+200);
+      await sheetsCall('update',{sheet:aba,cells:lote});
+      feitas.push({aba,cells:lote});
+      corrLog(`✓ ${aba}: ${lote.length} célula(s) alterada(s)`);
+    }
+  }
+}
+function corrInverter(feitas){const out={};feitas.forEach(f=>{(out[f.aba]=out[f.aba]||[]).push(...f.cells.map(c=>({row:c.row,col:c.col,expected:c.value,value:c.expected})));});return out;}
+function corrPilha(){try{const v=JSON.parse(localStorage.getItem('corr-desfazer')||'[]');return Array.isArray(v)?v:[];}catch(e){return[];}}
+function corrSalvarPilha(p){try{localStorage.setItem('corr-desfazer',JSON.stringify(p.slice(-20)));}catch(e){}}
+function corrMostrarDesfazer(){
+  const btn=document.getElementById('btn-corr-desfazer');if(!btn)return;
+  const u=corrPilha().slice(-1)[0];
+  btn.style.display=u?'':'none';
+  if(u)btn.title=`Desfaz a correção de ${new Date(u.quando).toLocaleString('pt-BR')} (${u.total} células)`;
+}
+async function corrAposGravar(){
+  tempoAbateCache=null;paradasCache=null;miudosCache=null;carcacaCache=null;pesosCache=null;
+  await corrCarregar();
+  try{const hist=await carregarHistoricoCompleto();if(hist&&hist.length){historico=hist;renderDashboard();}}catch(e){}
+}
+async function corrAplicar(){
+  const alts=[];
+  for(const el of document.querySelectorAll('#tbl-corr .corr-val')){
+    if(!el.value.trim())continue;const cx=CORRECOES[+el.dataset.n];const n=corrNum(el.value);
+    if(n===null){alert(`Valor inválido em "${cx.titulo}": ${el.value}`);return;}
+    alts.push(...corrAlteracoes(cx,n));
+  }
+  document.querySelectorAll('#tbl-corr .corr-troca:checked').forEach(el=>alts.push(...corrAlteracoes(CORRECOES[+el.dataset.n],true)));
+  if(!alts.length){alert('Nenhum valor digitado.');return;}
+  // Miudos: PctReal (col F) acompanha = PesoKg / KgTotalAbate × 100
+  const extras=[];
+  alts.filter(a=>a.pct&&a.aba==='Miudos').forEach(a=>{
+    const row=[...corrLidas.Miudos[a.i]];row[a.col]=a.novo;
+    const p=corrNum(row[3]),k=corrNum(row[4]);
+    if(p!==null&&k>0)extras.push({aba:'Miudos',i:a.i,col:5,novo:parseFloat((p/k*100).toFixed(4))});
+  });
+  const todas=[...alts,...extras].filter(a=>!corrMesmo(corrLidas[a.aba][a.i][a.col],a.novo));
+  if(!todas.length){alert('Esses valores já estão corretos no Sheets.');return;}
+  const porAba={};
+  todas.forEach(a=>{(porAba[a.aba]=porAba[a.aba]||[]).push({row:a.i+1,col:a.col+1,expected:corrLidas[a.aba][a.i][a.col],value:a.novo});});
+  const princ=todas.filter(a=>!extras.includes(a));
+  const resumo=princ.slice(0,12).map(a=>`• ${a.aba} linha ${a.i+1} col ${corrLetra(a.col)}: ${corrLidas[a.aba][a.i][a.col]} → ${a.novo}`).join('\n')+(princ.length>12?`\n… e mais ${princ.length-12}`:'')+(extras.length?`\n(+ ${extras.length} célula(s) de % recalculada(s) em Miudos col F)`:'');
+  if(!confirm(`Vou alterar ${todas.length} célula(s) no Sheets:\n\n${resumo}\n\nSó essas células mudam — nada é apagado. Continuar?`))return;
+  const btn=document.getElementById('btn-corr-aplicar');btn.disabled=true;
+  const st=document.getElementById('corr-status');document.getElementById('corr-log').innerHTML='';
+  const feitas=[];
+  try{
+    st.textContent='Gravando...';
+    await corrEnviar(porAba,feitas);
+    st.textContent=`✓ ${todas.length} célula(s) corrigida(s)`;
+  }catch(e){
+    const msg=/desconhecida: update/i.test(e.message)?'O Apps Script ainda não tem a ação "update". Atualize o Apps Script para a v2.1 e publique uma nova versão.':e.message;
+    st.textContent='✕ '+msg;corrLog('✕ '+msg,true);
+  }
+  if(feitas.length){
+    const total=feitas.reduce((a,f)=>a+f.cells.length,0);
+    corrSalvarPilha([...corrPilha(),{quando:Date.now(),total,celulas:corrInverter(feitas)}]);
+    await corrAposGravar();
+  }
+  btn.disabled=false;corrMostrarDesfazer();
+}
+async function corrDesfazer(){
+  const pilha=corrPilha();const u=pilha[pilha.length-1];
+  if(!u){alert('Nada para desfazer.');return;}
+  if(!confirm(`Desfazer a correção de ${new Date(u.quando).toLocaleString('pt-BR')} (${u.total} células)? Os valores antigos voltam.`))return;
+  const st=document.getElementById('corr-status');document.getElementById('corr-log').innerHTML='';
+  const feitas=[];
+  try{
+    await corrEnviar(u.celulas,feitas);
+    corrSalvarPilha(pilha.slice(0,-1));
+    st.textContent='✓ Correção desfeita';
+    await corrAposGravar();
+  }catch(e){st.textContent='✕ '+e.message;corrLog('✕ '+e.message,true);}
+  corrMostrarDesfazer();
 }
 
 function getSemana(dataStr){const d=new Date(dataStr+'T12:00:00');const s=new Date(d.getFullYear(),d.getMonth(),1);return Math.ceil((d.getDate()+s.getDay())/7);}
