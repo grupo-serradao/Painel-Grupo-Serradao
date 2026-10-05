@@ -2479,12 +2479,16 @@ async function carregarTempoAbateDoSheets(){
     const mediaColabBov=comTempoBov.length?comTempoBov.reduce((a,r)=>a+r.operadores,0)/comTempoBov.length:90;
     const mediaColabSui=comTempoSui.length?comTempoSui.reduce((a,r)=>a+r.operadores,0)/comTempoSui.length:80;
     // Para dias sem tempoMin, preenche com a média
+    // Também capa tempoMin absurdo (>2.5× média) — ex: 766 min digitado no lugar de 76
     return dedup.map(r=>{
       const isBov=r.animal.toLowerCase().includes('bovino');
+      const mediaT=isBov?mediaTempoBov:mediaTempoSui;
+      const mediaO=isBov?mediaColabBov:mediaColabSui;
+      const tempoOk=r.tempoMin>0&&r.tempoMin<=mediaT*2.5;
       return{
         ...r,
-        tempoMin:r.tempoMin>0?r.tempoMin:(isBov?mediaTempoBov:mediaTempoSui),
-        operadores:r.operadores>0?r.operadores:(isBov?mediaColabBov:mediaColabSui)
+        tempoMin:tempoOk?r.tempoMin:mediaT,
+        operadores:r.operadores>0?r.operadores:mediaO
       };
     });
   }catch(e){return[];}
@@ -2852,12 +2856,15 @@ async function renderRendimentoReal(tB,tS,kgTotalFromTA=0){
     if(!kgTotalPorDia[r.data]||r.kgTotalAbate>kgTotalPorDia[r.data])
       kgTotalPorDia[r.data]=r.kgTotalAbate||0;
   });
-  // Prefere o totalKg do TempoAbate (lançado pela equipe do setor, cobre todas as empresas).
-  // Fallback para kgTotalAbate do Miudos (salvo na hora do lançamento, só FV+Serradão).
-  const kgTotalAbatePeriodo=Object.values(kgTotalPorDia).reduce((a,b)=>a+b,0);/* fix Vergalho/rendimento: usa KgTotal dos Miudos (total real boi+vaca), nao Total_Kg subcontado do TempoAbate */
+  // Excluir dias com rendimento diário < 12% (COURO zerado ou dados ausentes)
+  const _pesoMiudoPorDia={};
+  registros.forEach(r=>{_pesoMiudoPorDia[r.data]=(_pesoMiudoPorDia[r.data]||0)+(r.pesoKg||0);});
+  const _datasIncompletasRend=new Set(Object.keys(kgTotalPorDia).filter(dt=>kgTotalPorDia[dt]>0&&(_pesoMiudoPorDia[dt]||0)/kgTotalPorDia[dt]*100<12));
+  const kgTotalAbatePeriodo=Object.entries(kgTotalPorDia).filter(([dt])=>!_datasIncompletasRend.has(dt)).reduce((a,[,v])=>a+v,0);
+  const registrosCompletos=registros.filter(r=>!_datasIncompletasRend.has(r.data));
 
   // Calcula aproveitamento total aqui — mesma fonte do gráfico
-  const pesoMiudoTotal=registros.reduce((a,r)=>a+(r.pesoKg||0),0);
+  const pesoMiudoTotal=registrosCompletos.reduce((a,r)=>a+(r.pesoKg||0),0);
   if(kgTotalAbatePeriodo>0) set('ind-aprov-animal',(pesoMiudoTotal/kgTotalAbatePeriodo*100).toFixed(2)+'%');
 
   const linhas=Object.values(porMiudo).map(m=>{
@@ -4116,16 +4123,21 @@ async function calcularIndicadoresExtra(tB,tS,nd){
   if(miudosCache){
     const datasSet=new Set(diasFiltrados.map(d=>d.data));
     const regMiudos=miudosCache.filter(m=>datasSet.has(m.data));
-    const pesoMiudos=regMiudos.reduce((a,m)=>a+m.pesoKg,0);
     const kgPorDia={};
     regMiudos.forEach(r=>{if(!kgPorDia[r.data]||r.kgTotalAbate>kgPorDia[r.data])kgPorDia[r.data]=r.kgTotalAbate||0;});
-    const pesoTotal=Object.values(kgPorDia).reduce((a,b)=>a+b,0);
+    // Excluir dias com rendimento diário < 12% (COURO zerado ou dados ausentes)
+    const _pmDia={};
+    regMiudos.forEach(r=>{_pmDia[r.data]=(_pmDia[r.data]||0)+(r.pesoKg||0);});
+    const _incomp=new Set(Object.keys(kgPorDia).filter(dt=>kgPorDia[dt]>0&&(_pmDia[dt]||0)/kgPorDia[dt]*100<12));
+    const pesoTotal=Object.entries(kgPorDia).filter(([dt])=>!_incomp.has(dt)).reduce((a,[,v])=>a+v,0);
+    const pesoMiudos=regMiudos.filter(r=>!_incomp.has(r.data)).reduce((a,m)=>a+(m.pesoKg||0),0);
     if(pesoTotal>0){
       const aprov=pesoMiudos/pesoTotal*100;
       set('ind-aprov-animal',aprov.toFixed(2)+'%');
+      const sufixo=_incomp.size>0?` (${_incomp.size}d excl.)`:'';
       // Meta oficial: 27,54% — ≥27,54% verde, ≥22% amarelo, <22% vermelho
       const estAprov=aprov>=27.54?'ok':aprov>=22?'warn':'bad';
-      const labelAprov=aprov>=27.54?'Meta atingida':aprov>=22?'Abaixo da meta':'Crítico';
+      const labelAprov=(aprov>=27.54?'Meta atingida':aprov>=22?'Abaixo da meta':'Crítico')+sufixo;
       setIndColor('box-aprov-animal','ind-aprov-animal',estAprov,labelAprov,'ind-aprov-sub');
     }
   }
