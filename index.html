@@ -231,7 +231,7 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
       <span class="brand-name">Dashboard Operacional</span>
       <span class="brand-sub">Frigorífico Serradão · Atualização diária</span>
     </div>
-    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.05-213</span>
+    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.05-214</span>
   </div>
   <div class="top-right">
     <div class="legend">
@@ -1825,6 +1825,11 @@ async function renderDashboard(){
     nd,                        // passa o nº de dias para os cálculos de eficiência
     data:diasFiltrados[diasFiltrados.length-1].data
   };
+  // Com filtro de empresa, a meta tem que ser só a da empresa (não a do dia inteiro)
+  if(filtroAtual.empresa){
+    d.metaBov=d.bovino.reduce((a,r)=>a+(r.previsto||0),0);
+    d.metaSui=d.suino.reduce((a,r)=>a+(r.previsto||0),0);
+  }
   const dl=filtroAtual.dia?fmtBR(d.data):document.getElementById('filtro-resumo')?.textContent||fmtBR(d.data);
   ['top-date','vol-date-label','vol-bov-date','vol-sui-date'].forEach(id=>set(id,dl));
   const tB=d.bovino.reduce((a,r)=>a+(r.abatidos||0),0);
@@ -1910,12 +1915,16 @@ async function renderDashboard(){
   const mediaKgCabSui=taComKgSui.length?taComKgSui.reduce((a,t)=>a+t.totalKg/t.qtd,0)/taComKgSui.length:0;
   const kgBovTotal=temposBov.reduce((a,t)=>a+(t.totalKg>0?t.totalKg:(mediaKgCabBov*t.qtd)),0);
   const kgSuiTotal=temposSui.reduce((a,t)=>a+(t.totalKg>0?t.totalKg:(mediaKgCabSui*t.qtd)),0);
-  // Ritmo = total de cabeças / total de horas
-  const ritmoBov=horasBovReal>0?tB/horasBovReal:0;
-  const ritmoSui=horasSuiReal>0?tS/horasSuiReal:0;
-  // KgHH = kg total / (horas total * operadores médios)
-  const kgHHBov=kgBovTotal>0&&horasBovReal>0&&colabBovReal>0?kgBovTotal/(horasBovReal*colabBovReal):0;
-  const kgHHSui=kgSuiTotal>0&&horasSuiReal>0&&colabSuiReal>0?kgSuiTotal/(horasSuiReal*colabSuiReal):0;
+  // Ritmo = cabeças dos MESMOS dias que têm horas no TempoAbate / horas
+  const qtdBovTA=temposBov.reduce((a,t)=>a+(t.qtd||0),0);
+  const qtdSuiTA=temposSui.reduce((a,t)=>a+(t.qtd||0),0);
+  const ritmoBov=horasBovReal>0?qtdBovTA/horasBovReal:0;
+  const ritmoSui=horasSuiReal>0?qtdSuiTA/horasSuiReal:0;
+  // KgHH = kg total / Σ(horas × operadores) de cada dia
+  const hhBov=temposBov.reduce((a,t)=>a+t.tempoMin/60*t.operadores,0);
+  const hhSui=temposSui.reduce((a,t)=>a+t.tempoMin/60*t.operadores,0);
+  const kgHHBov=kgBovTotal>0&&hhBov>0?kgBovTotal/hhBov:0;
+  const kgHHSui=kgSuiTotal>0&&hhSui>0?kgSuiTotal/hhSui:0;
 
   set('prod-bov-h',temposBov.length>0?ritmoBov.toFixed(1):'—');
   set('prod-sui-h',temposSui.length>0?ritmoSui.toFixed(1):'—');
@@ -1934,7 +1943,7 @@ async function renderDashboard(){
   renderCondenacaoReal(tB);renderCondenacaoAnimalCharts();await renderRendimentoReal(tB,tS,kgBovTotal);
   renderProdutividadeReal();
   if(document.getElementById('panel-paradas')?.style.display!=='none') renderParadasReal();
-  calcularIndicadoresExtra(tB,tS,d.nd);
+  calcularIndicadoresExtra(tB,tS,d.nd,d.metaBov,d.metaSui);
 }
 async function renderParadasReal(){
   if(!paradasCache) paradasCache=await carregarParadasDoSheets();
@@ -2019,7 +2028,9 @@ async function renderParadasReal(){
     });
     const mesesChart=Object.keys(porMesTipo).sort().slice(-6);
     const labMeses=mesesChart.map(m=>nomesMesesCurto[m.slice(5,7)]+'/'+m.slice(2,4));
-    const dsTM=tiposUnicos.map((tipo,i)=>({
+    // Tipos de todos os meses exibidos — senão a linha Total soma tipos que não têm barra
+    const tiposGraf=[...new Set(mesesChart.flatMap(m=>Object.keys(porMesTipo[m]||{})))].sort();
+    const dsTM=tiposGraf.map((tipo,i)=>({
       label:tipo,
       data:mesesChart.map(m=>parseFloat(((porMesTipo[m]?.[tipo]||0)/60).toFixed(1))),
       backgroundColor:TIPO_CORES[tipo]||`hsl(${i*60},60%,50%)`,
@@ -2234,45 +2245,36 @@ async function renderProdutividadeReal(){
     const porMes={};const nomesMeses=['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
     diasFiltrados.forEach(h=>{
       const m=h.data.slice(5,7);
-      if(!porMes[m])porMes[m]={bov:0,sui:0,metaBov:0,metaSui:0,dias:0,horasBov:0,horasSui:0,colabBov:0,colabSui:0,diasReais:0,diasReaisS:0,kgBov:0,kgSui:0};
-      porMes[m].bov+=bovDoDia(h);porMes[m].sui+=suiDoDia(h);
-      porMes[m].metaBov+=metaBovDoDia(h);porMes[m].metaSui+=metaSuiDoDia(h);porMes[m].dias+=1;
+      if(!porMes[m])porMes[m]={bov:0,sui:0,metaBov:0,metaSui:0,dias:0,horasBov:0,horasSui:0,colabBov:0,colabSui:0,diasReais:0,diasReaisS:0,kgBov:0,kgSui:0,qtdBov:0,qtdSui:0,hhBov:0,hhSui:0};
+      const g=porMes[m];
+      g.bov+=bovDoDia(h);g.sui+=suiDoDia(h);
+      g.metaBov+=metaBovDoDia(h);g.metaSui+=metaSuiDoDia(h);g.dias+=1;
       const tb=getDadosReais(h.data,'bovino');const ts=getDadosReais(h.data,'suíno')||getDadosReais(h.data,'suino');
-      if(tb){porMes[m].horasBov+=tb.tempoMin/60;porMes[m].colabBov+=tb.operadores;porMes[m].kgBov+=tb.totalKg||0;porMes[m].diasReais++;}
-      if(ts){porMes[m].horasSui+=ts.tempoMin/60;porMes[m].colabSui+=ts.operadores;porMes[m].kgSui+=ts.totalKg||0;porMes[m].diasReaisS++;}
+      if(tb){g.horasBov+=tb.tempoMin/60;g.colabBov+=tb.operadores;g.kgBov+=tb.totalKg||0;g.qtdBov+=tb.qtd||0;g.hhBov+=tb.tempoMin/60*tb.operadores;g.diasReais++;}
+      if(ts){g.horasSui+=ts.tempoMin/60;g.colabSui+=ts.operadores;g.kgSui+=ts.totalKg||0;g.qtdSui+=ts.qtd||0;g.hhSui+=ts.tempoMin/60*ts.operadores;g.diasReaisS++;}
     });
     grupos=Object.keys(porMes).sort().map(m=>({label:nomesMeses[parseInt(m)],mesNum:parseInt(m),...porMes[m]}));
   }else{
     grupos=diasFiltrados.map(h=>{
       const tb=getDadosReais(h.data,'bovino');const ts=getDadosReais(h.data,'suíno')||getDadosReais(h.data,'suino');
-      const bovDia=bovDoDia(h);const suiDia=suiDoDia(h);
-      // Kg por dia: usa totalKg real; se zero, estima via média kg/cab dos registros com dados
-      const taComKgBovD=(tempoAbateCache||[]).filter(t=>t.animal.toLowerCase().includes('bovino')&&t.totalKg>0&&t.qtd>0);
-      const taComKgSuiD=(tempoAbateCache||[]).filter(t=>t.animal.toLowerCase().includes('su')&&t.totalKg>0&&t.qtd>0);
-      const mKgCabBov=taComKgBovD.length?taComKgBovD.reduce((a,t)=>a+t.totalKg/t.qtd,0)/taComKgBovD.length:0;
-      const mKgCabSui=taComKgSuiD.length?taComKgSuiD.reduce((a,t)=>a+t.totalKg/t.qtd,0)/taComKgSuiD.length:0;
-      const kgBovDia=tb&&tb.totalKg>0?tb.totalKg:(mKgCabBov>0?mKgCabBov*bovDia:0);
-      const kgSuiDia=ts&&ts.totalKg>0?ts.totalKg:(mKgCabSui>0?mKgCabSui*suiDia:0);
-      return{label:fmtBR(h.data),dataRef:h.data,bov:bovDia,sui:suiDia,metaBov:metaBovDoDia(h),metaSui:metaSuiDoDia(h),dias:1,
+      return{label:fmtBR(h.data),dataRef:h.data,bov:bovDoDia(h),sui:suiDoDia(h),metaBov:metaBovDoDia(h),metaSui:metaSuiDoDia(h),dias:1,
         horasBov:tb?tb.tempoMin/60:0,horasSui:ts?ts.tempoMin/60:0,
         colabBov:tb?tb.operadores:0,colabSui:ts?ts.operadores:0,
-        kgBov:kgBovDia,kgSui:kgSuiDia,
+        kgBov:tb?tb.totalKg||0:0,kgSui:ts?ts.totalKg||0:0,
+        qtdBov:tb?tb.qtd||0:0,qtdSui:ts?ts.qtd||0:0,
+        hhBov:tb?tb.tempoMin/60*tb.operadores:0,hhSui:ts?ts.tempoMin/60*ts.operadores:0,
         diasReais:tb?1:0,diasReaisS:ts?1:0};
     });
   }
   const labelsBov=[],bovH=[],bovHMeta=[],suiH=[],suiHMeta=[],linhasTabela=[],ritmoB=[],ritmoS=[],ritmoMetaB=[],ritmoMetaS=[];
   grupos.forEach(g=>{
-    const horasBov=g.horasBov>0?g.horasBov:(8*g.dias);
-    const horasSui=g.horasSui>0?g.horasSui:(8*g.dias);
-    const colabBov=g.colabBov>0?(g.diasReais>0?Math.round(g.colabBov/g.diasReais):g.colabBov):(params.colabBov||90);
-    const colabSui=g.colabSui>0?((g.diasReaisS||0)>0?Math.round(g.colabSui/g.diasReaisS):g.colabSui):(params.colabSui||80);
-    const mediaDiaBovG=g.dias>0?g.bov/g.dias:0;const mediaDiaSuiG=g.dias>0?g.sui/g.dias:0;
-    const abateHBov=horasBov>0?g.bov/horasBov:0;const abateHSui=horasSui>0?g.sui/horasSui:0;
-    const cabColBov=colabBov>0?mediaDiaBovG/colabBov:0;const cabColSui=colabSui>0?mediaDiaSuiG/colabSui:0;
-    // Kg/homem/hora — usa Total_Kg do TempoAbate se disponível
-    // Só calcula KgHH se há dados reais de TempoAbate (diasReais > 0)
-    const kgHHBov=g.diasReais>0&&g.kgBov>0&&g.horasBov>0&&colabBov>0?g.kgBov/(g.horasBov*colabBov):0;
-    const kgHHSui=(g.diasReaisS||0)>0&&g.kgSui>0&&g.horasSui>0&&colabSui>0?g.kgSui/(g.horasSui*colabSui):0;
+    // Tudo calculado só com os dias que têm TempoAbate — sem horas/colaboradores estimados
+    const colabBov=g.diasReais>0?g.colabBov/g.diasReais:0;
+    const colabSui=g.diasReaisS>0?g.colabSui/g.diasReaisS:0;
+    const abateHBov=g.horasBov>0?g.qtdBov/g.horasBov:0;const abateHSui=g.horasSui>0?g.qtdSui/g.horasSui:0;
+    const cabColBov=colabBov>0?g.qtdBov/g.diasReais/colabBov:0;const cabColSui=colabSui>0?g.qtdSui/g.diasReaisS/colabSui:0;
+    const kgHHBov=g.kgBov>0&&g.hhBov>0?g.kgBov/g.hhBov:0;
+    const kgHHSui=g.kgSui>0&&g.hhSui>0?g.kgSui/g.hhSui:0;
     // Metas dinâmicas: usa data de referência do grupo para selecionar a vigência correta
     const _dataRef=g.dataRef||(filtroAtual.ano&&g.mesNum!=null?`${filtroAtual.ano}-${String(g.mesNum).padStart(2,'0')}-01`:null);
     const _mp=getMetasProd(_dataRef);
@@ -2282,7 +2284,8 @@ async function renderProdutividadeReal(){
     ritmoB.push(parseFloat(abateHBov.toFixed(1)));ritmoS.push(parseFloat(abateHSui.toFixed(1)));
     ritmoMetaB.push(_mp.ritmoB);
     ritmoMetaS.push(_mp.ritmoS);
-    linhasTabela.push([g.label,kgHHBov.toFixed(2),abateHBov.toFixed(1),cabColBov.toFixed(1),farol(_mp.khhB>0?(kgHHBov-_mp.khhB)/_mp.khhB*100:0),kgHHSui.toFixed(2),abateHSui.toFixed(1),cabColSui.toFixed(1),farol(_mp.khhS>0?(kgHHSui-_mp.khhS)/_mp.khhS*100:0)]);
+    const v=(x,dec)=>x>0?x.toFixed(dec):'—';
+    linhasTabela.push([g.label,v(kgHHBov,2),v(abateHBov,1),v(cabColBov,1),kgHHBov>0&&_mp.khhB>0?farol((kgHHBov-_mp.khhB)/_mp.khhB*100):'—',v(kgHHSui,2),v(abateHSui,1),v(cabColSui,1),kgHHSui>0&&_mp.khhS>0?farol((kgHHSui-_mp.khhS)/_mp.khhS*100):'—']);
   });
   // Guarda dados para toggle
   window._prodKHH={labels:labelsBov,bovH,bovHMeta,suiH,suiHMeta,ritmoB,ritmoS,ritmoMetaB,ritmoMetaS};
@@ -2503,7 +2506,7 @@ async function carregarParadasDoSheets(){
       tipo:String(r[2]||'').trim(),
       local:String(r[3]||'').trim(),
       descricao:String(r[4]||'').trim(),
-      duracaoMin:+r[5]||0
+      duracaoMin:parseFloat(String(r[5]??0).replace(',','.'))||0
     }));
   }catch(e){return[];}
 }
@@ -2519,7 +2522,10 @@ async function carregarPesosDoSheets(){
       else if(typeof d==='number') data=new Date(Math.round((d-25569)*86400*1000)).toISOString().slice(0,10);
       else data=String(d).slice(0,10);
       if(!data||!/^\d{4}-\d{2}-\d{2}$/.test(data))return null;
-      return{data,pesoBovFV:pf(r[2]),pesoBovSerr:pf(r[3]),pesoSuiSeali:pf(r[4]),pesoSuiSerr:pf(r[5])};
+      const v=[pf(r[2]),pf(r[3]),pf(r[4]),pf(r[5])];
+      // Formato antigo (até fev/2024): C = média kg/cab bovino, D = média kg/cab suíno — não são totais
+      if(Math.max(...v)>0&&Math.max(...v)<600)return{data,mediaBov:v[0],mediaSui:v[1]};
+      return{data,pesoBovFV:v[0],pesoBovSerr:v[1],pesoSuiSeali:v[2],pesoSuiSerr:v[3]};
     }).filter(Boolean);
   }catch(e){return[];}
 }
@@ -2776,6 +2782,7 @@ async function renderCondenacaoReal(tBov){
   }
 }
 let miudosCache=null;
+let miudosDiasExcluidos=new Map();
 let carcacaCache=null;
 async function carregarCarcacaDoSheets(){
   const pf=v=>parseFloat(String(v||0).replace(',','.'))||0;
@@ -2797,8 +2804,32 @@ async function carregarCarcacaDoSheets(){
 }
 async function carregarMiudosCompletoDoSheets(){
   const pf=v=>{const s=String(v||0);return parseFloat(s.includes(',')&&s.includes('.')?s.replace(/\./g,'').replace(',','.'):s.replace(',','.'))||0;};
-  try{const rows=await sheetsRead('Miudos');return rows.slice(1).filter(r=>r[0]&&String(r[0]).length>=10&&!String(r[0]).startsWith('undefined')).map(r=>({data:String(r[0]).slice(0,10),miudo:r[1],nrPecas:pf(r[2]),pesoKg:pf(r[3]),kgTotalAbate:pf(r[4]),pctReal:pf(r[5]),pctMeta:pf(r[6])}));}catch(e){return[];}
+  try{
+    const rows=await sheetsRead('Miudos');
+    const regs=rows.slice(1).filter(r=>r[0]&&String(r[0]).length>=10&&!String(r[0]).startsWith('undefined')).map(r=>({data:String(r[0]).slice(0,10),miudo:r[1],nrPecas:pf(r[2]),pesoKg:pf(r[3]),kgTotalAbate:pf(r[4]),pctReal:pf(r[5]),pctMeta:pf(r[6])}));
+    // Dias com lançamento incompleto saem de TODOS os cálculos de rendimento.
+    // COURO normal = 10–22% da carcaça; fora disso o couro faltou, veio pela metade ou foi lançado no dia vizinho.
+    // Total fora de 12–38% = erro de digitação (ex: FÍGADO 14/01/26 = 19.665 kg).
+    const kg={},tot={},couro={};
+    regs.forEach(r=>{
+      if(r.kgTotalAbate>(kg[r.data]||0))kg[r.data]=r.kgTotalAbate;
+      tot[r.data]=(tot[r.data]||0)+(r.pesoKg||0);
+      if(/COURO/i.test(String(r.miudo||'')))couro[r.data]=(couro[r.data]||0)+(r.pesoKg||0);
+    });
+    miudosDiasExcluidos=new Map();
+    Object.keys(kg).forEach(dt=>{
+      if(!(kg[dt]>0))return;
+      const t=tot[dt]/kg[dt]*100,c=(couro[dt]||0)/kg[dt]*100;
+      if(t>38)miudosDiasExcluidos.set(dt,`total ${t.toFixed(1)}% (digitação)`);
+      else if(c<10)miudosDiasExcluidos.set(dt,`couro ${c.toFixed(1)}% (faltando)`);
+      else if(c>22)miudosDiasExcluidos.set(dt,`couro ${c.toFixed(1)}% (dia vizinho)`);
+      else if(t<12)miudosDiasExcluidos.set(dt,`total ${t.toFixed(1)}% (incompleto)`);
+    });
+    if(miudosDiasExcluidos.size)console.log('[Miudos] dias excluídos:',[...miudosDiasExcluidos.entries()]);
+    return regs.filter(r=>!miudosDiasExcluidos.has(r.data));
+  }catch(e){return[];}
 }
+const contarExcluidos=datasSet=>[...miudosDiasExcluidos.keys()].filter(dt=>datasSet.has(dt)).length;
 async function renderRendimentoReal(tB,tS,kgTotalFromTA=0){
   if(!miudosCache) miudosCache=await carregarMiudosCompletoDoSheets();
   if(!carcacaCache) carcacaCache=await carregarCarcacaDoSheets();
@@ -2822,7 +2853,7 @@ async function renderRendimentoReal(tB,tS,kgTotalFromTA=0){
     if(!match){
       match=Object.values(porMiudo).find(m=>norm(m.nomeOriginal)===key||key.includes(norm(m.nomeOriginal))||norm(m.nomeOriginal).includes(key));
     }
-    if(match){match.pesos.push(r.pesoKg);match.datas=(match.datas||[]);match.datas.push(r.data);match.pctReais.push(r.pctReal);}
+    if(match){match.pesos.push(r.pesoKg);match.pctReais.push(r.pctReal);if(r.pesoKg>0)(match.datas=match.datas||new Set()).add(r.data);}
   });
 
   const precos=params.precosMiudos||{};
@@ -2837,44 +2868,39 @@ async function renderRendimentoReal(tB,tS,kgTotalFromTA=0){
   // representa o peso total de carcaça — base para calcular meta em kg
   // Base do Vergalho: peso de machos (Boi *) da aba Carcaca
   // Fallback: peso total bovino da aba Pesos quando não tem Carcaca
-  const kgCarcacaBoiPeriodo=(()=>{
+  const kgBoiEm=datas=>{
     const doCarcaca=carcacaCache
-      .filter(c=>datasSet.has(c.data)&&/^BOI\b/i.test(String(c.categoria||'').trim()))
+      .filter(c=>datas.has(c.data)&&/^BOI\b/i.test(String(c.categoria||'').trim()))
       .reduce((a,c)=>a+c.kgCarcaca,0);
     if(doCarcaca>0)return doCarcaca;
     // Fallback: peso total bovino da aba Pesos quando Carcaca não tem dados
     if(pesosCache){
       return pesosCache
-        .filter(p=>datasSet.has(p.data))
+        .filter(p=>datas.has(p.data))
         .reduce((a,p)=>a+(p.pesoBovFV||0)+(p.pesoBovSerr||0),0);
     }
     return 0;
-  })();
+  };
 
   const kgTotalPorDia={};
   registros.forEach(r=>{
     if(!kgTotalPorDia[r.data]||r.kgTotalAbate>kgTotalPorDia[r.data])
       kgTotalPorDia[r.data]=r.kgTotalAbate||0;
   });
-  // Excluir dias com rendimento diário < 12% (COURO zerado ou dados ausentes)
-  const _pesoMiudoPorDia={};
-  registros.forEach(r=>{_pesoMiudoPorDia[r.data]=(_pesoMiudoPorDia[r.data]||0)+(r.pesoKg||0);});
-  const _datasIncompletasRend=new Set(Object.keys(kgTotalPorDia).filter(dt=>kgTotalPorDia[dt]>0&&(_pesoMiudoPorDia[dt]||0)/kgTotalPorDia[dt]*100<12));
-  const kgTotalAbatePeriodo=Object.entries(kgTotalPorDia).filter(([dt])=>!_datasIncompletasRend.has(dt)).reduce((a,[,v])=>a+v,0);
-  const registrosCompletos=registros.filter(r=>!_datasIncompletasRend.has(r.data));
+  const kgTotalAbatePeriodo=Object.values(kgTotalPorDia).reduce((a,v)=>a+v,0);
 
   // Calcula aproveitamento total aqui — mesma fonte do gráfico
-  const pesoMiudoTotal=registrosCompletos.reduce((a,r)=>a+(r.pesoKg||0),0);
+  const pesoMiudoTotal=registros.reduce((a,r)=>a+(r.pesoKg||0),0);
   if(kgTotalAbatePeriodo>0) set('ind-aprov-animal',(pesoMiudoTotal/kgTotalAbatePeriodo*100).toFixed(2)+'%');
 
   const linhas=Object.values(porMiudo).map(m=>{
-    // Numerador e denominador com os mesmos dias (exclui dias incompletos)
-    const pesoTotal=m.pesos.reduce((a,b,i)=>a+(_datasIncompletasRend.has((m.datas||[])[i])?0:(b||0)),0);
-    // % real = peso total do miúdo / kg total abatido nos dias em que foi lançado
-    // Usa kgTotalAbate que veio junto com cada linha — não usa abates do histórico
-    // Vergalho vem exclusivamente de bois → usa kgCarcacaBoiPeriodo como denominador
-    // Demais miúdos → usa kgTotalAbatePeriodo (boi + vaca)
-    const baseReal=m.nomeOriginal==='Vergalho'?kgCarcacaBoiPeriodo:kgTotalAbatePeriodo;
+    const pesoTotal=m.pesos.reduce((a,b)=>a+(b||0),0);
+    // % real = peso do miúdo / kg de carcaça SÓ dos dias em que ele foi lançado
+    // (ex: MOCOTÓ não era lançado antes de mai/26 — não pode virar perda)
+    // Vergalho vem exclusivamente de bois → base = carcaça de bois desses dias
+    const datasItem=m.datas||new Set();
+    const kgDiasItem=[...datasItem].reduce((a,dt)=>a+(kgTotalPorDia[dt]||0),0);
+    const baseReal=m.nomeOriginal==='Vergalho'?kgBoiEm(datasItem):kgDiasItem;
     const pctMedioReal=baseReal>0?(pesoTotal/baseReal*100):0;
     const preco=getPreco(m.nomeOriginal);
     // Mesma base para calcular kg esperado
@@ -2898,13 +2924,14 @@ async function renderRendimentoReal(tB,tS,kgTotalFromTA=0){
   const benchSub=document.getElementById('rend-bench-sub');
   if(benchEl){
     benchEl.textContent=totalComBench>0?`${acimaBench}/${totalComBench}`:'—';
-    benchEl.style.color=acimaBench>=totalComBench*0.7?'var(--green)':acimaBench>=totalComBench*0.5?'var(--yellow)':'var(--red)';
+    benchEl.style.color=totalComBench===0?'var(--text)':acimaBench>=totalComBench*0.7?'var(--green)':acimaBench>=totalComBench*0.5?'var(--yellow)':'var(--red)';
   }
   if(benchSub) benchSub.textContent=`miúdos acima do benchmark do setor`;
 
   set('rend-perda-bov',fmtMoeda(perdaTotal));
   set('rend-perda-sui','—');
   if(maiorPerda){set('rend-maior-nome',maiorPerda.nome);set('rend-maior-val',fmtMoeda(maiorPerda.perda)+' acumulado');}
+  else{set('rend-maior-nome','—');set('rend-maior-val','Nenhuma perda no período');}
 
   const rank=linhas.filter(l=>l.perda<0).sort((a,b)=>a.perda-b.perda);
   const re=document.getElementById('ranking-bov');
@@ -2932,8 +2959,9 @@ function renderDemoRendimento(tB,tS){
 function renderMiudosTable(id,rows,totalAbtPadrao){
   const tbody=document.querySelector('#'+id+' tbody');tbody.innerHTML='';
   rows.forEach(r=>{
-    const diff=r.real-r.meta;
-    const f=diff>=0?'<span class="f f-g"></span>':diff>-0.3?'<span class="f f-y"></span>':'<span class="f f-r"></span>';
+    // Farol relativo à meta do item: ≥meta verde, até 10% abaixo amarelo; sem lançamento = neutro
+    const semDado=r.pesoKg!==undefined&&!(r.pesoKg>0);
+    const f=semDado?'<span style="color:var(--muted)">—</span>':r.real>=r.meta?'<span class="f f-g"></span>':r.real>=r.meta*0.9?'<span class="f f-y"></span>':'<span class="f f-r"></span>';
     let p='—';
     if(r.perda<0){
       const abs=Math.abs(r.perda);
@@ -3751,10 +3779,12 @@ function getHistoricoBase(){
   const ano=document.getElementById('comp-base-ano')?.value;const mes=document.getElementById('comp-base-mes')?.value;const dia=document.getElementById('comp-base-dia')?.value;
   return historico.filter(h=>{if(ano&&h.data.slice(0,4)!==ano)return false;if(mes&&h.data.slice(5,7)!==mes)return false;if(dia&&h.data.slice(8,10)!==dia)return false;return true;});
 }
+// Sheets grava sem acento (FIGADO, LINGUA, MOCOTO, ESOFAGO) — compara sem acento
+const normNome=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim();
 // Calcula rendimento real por miúdo: pesoKg / kgTotalAbate * 100, agregado por período
 function calcRendPorMiudo(datasSet, filtroNome){
   if(!miudosCache)return{};
-  const registros=miudosCache.filter(m=>datasSet.has(m.data)&&(!filtroNome||m.miudo?.trim().toUpperCase()===filtroNome.toUpperCase()));
+  const registros=miudosCache.filter(m=>datasSet.has(m.data)&&(!filtroNome||normNome(m.miudo)===normNome(filtroNome)));
   // Agrupa por data+miudo: soma pesos e pega maior kgTotalAbate do dia
   const porDia={};
   registros.forEach(r=>{
@@ -3766,8 +3796,8 @@ function calcRendPorMiudo(datasSet, filtroNome){
   // Acumula peso total e kgTotal por miúdo — rendimento = pesoTotal/kgTotal (não média de %)
   const porMiudo={};
   Object.values(porDia).forEach(d=>{
-    const match=MIUDOS.find(m=>m.nome.toUpperCase()===d.miudo.toUpperCase());
-    if(!match)return;
+    const match=MIUDOS.find(m=>normNome(m.nome)===normNome(d.miudo));
+    if(!match||!(d.pesoKg>0))return; // dia sem lançamento do item não entra na base
     if(!porMiudo[match.nome])porMiudo[match.nome]={pesoKg:0,kgTotal:0};
     porMiudo[match.nome].pesoKg+=d.pesoKg;
     porMiudo[match.nome].kgTotal+=d.kgTotalAbate;
@@ -3781,7 +3811,7 @@ function calcRendPorMiudo(datasSet, filtroNome){
 // Calcula rendimento total mensal: soma pesos todos miúdos / soma kgTotalAbate, por mês
 function calcRendTotalMensal(filtroNome){
   if(!miudosCache)return{};
-  const cache=filtroNome?miudosCache.filter(r=>r.miudo?.trim().toUpperCase()===filtroNome.toUpperCase()):miudosCache;
+  const cache=filtroNome?miudosCache.filter(r=>normNome(r.miudo)===normNome(filtroNome)):miudosCache;
   const porDiaMes={};
   cache.forEach(r=>{
     if(!r.data||typeof r.data!=='string'||r.data.length<7||r.data.startsWith('undefined'))return;
@@ -3794,8 +3824,8 @@ function calcRendTotalMensal(filtroNome){
   const result={};
   Object.entries(porDiaMes).forEach(([mes,dias])=>{
     let totalPeso=0,totalAbate=0,nd=0;
-    Object.values(dias).forEach(d=>{if(d.total>0){totalPeso+=d.peso;totalAbate+=d.total;nd++;}});
-    result[mes]=totalAbate>0?parseFloat((totalPeso/totalAbate*100).toFixed(4)):0;
+    Object.values(dias).forEach(d=>{if(d.total>0&&(!filtroNome||d.peso>0)){totalPeso+=d.peso;totalAbate+=d.total;nd++;}});
+    if(totalAbate>0)result[mes]=parseFloat((totalPeso/totalAbate*100).toFixed(4));
   });
   return result;
 }
@@ -3822,19 +3852,13 @@ async function renderAnaliseComparativa(){
   }
   const pesoBaseInfo=pesoReal(datasBase);
   const pesoAtualInfo=pesoReal(datasAtual);
-  // Fallback se não há dados de miúdos
-  const diasBaseCount=diasBase.length||1;
-  const diasAtualCount=diasAtual.length||1;
-  // Volume base para cálculo de perda: usa kgTotalAbate real dos miúdos do período base
-  const calcKgTotalAbate=(datasSet)=>{
-    if(!miudosCache)return 0;
-    const regs=miudosCache.filter(m=>datasSet.has(m.data));
-    const kgPorDia={};
-    regs.forEach(r=>{if(!kgPorDia[r.data]||r.kgTotalAbate>kgPorDia[r.data])kgPorDia[r.data]=r.kgTotalAbate||0;});
-    return Object.values(kgPorDia).reduce((a,b)=>a+b,0);
-  };
-  const kgTotalBase=calcKgTotalAbate(datasBase);
-  const kgTotalAtual=calcKgTotalAbate(datasAtual);
+  // Valores "/mês": kg médio por dia de abate × dias de abate num mês típico (meses fechados do histórico)
+  const _mesCorrente=new Date().toISOString().slice(0,7);
+  const _histFechado=historico.filter(h=>h.data.slice(0,7)!==_mesCorrente);
+  const diasPorMes=_histFechado.length/Math.max(1,new Set(_histFechado.map(h=>h.data.slice(0,7))).size);
+  const kgMes=info=>info.dias>0?info.total/info.dias*diasPorMes:0;
+  const kgTotalBase=kgMes(pesoBaseInfo);
+  const kgTotalAtual=kgMes(pesoAtualInfo);
 
   // ── CÁLCULO POR MIÚDO: perda vs meta em cada período ──
   let perdaBaseMensal=0, perdaAtualMensal=0, rendTotalBase=0, rendTotalAtual=0;
@@ -3900,7 +3924,7 @@ async function renderAnaliseComparativa(){
   document.getElementById('comp-ganho-total').style.color=ganhoMensalTotal>=0?'var(--green)':'var(--red)';
   const elSub=document.getElementById('comp-ganho-sub');
   if(elSub){
-    elSub.innerHTML=`Perdia <b style="color:var(--red)">${fmtMoeda(perdaBaseMensal)}/mês</b> → Perde <b style="color:${perdaAtualMensal>0?'var(--red)':'var(--green)'}">${fmtMoeda(perdaAtualMensal)}/mês</b><br><span style="font-size:9px;color:var(--muted)">Ambos sobre ${(kgTotalBase/1000).toFixed(0)}t de carcaça base</span>`;
+    elSub.innerHTML=`Perdia <b style="color:var(--red)">${fmtMoeda(perdaBaseMensal)}/mês</b> → Perde <b style="color:${perdaAtualMensal>0?'var(--red)':'var(--green)'}">${fmtMoeda(perdaAtualMensal)}/mês</b><br><span style="font-size:9px;color:var(--muted)">Ambos sobre ${(kgTotalBase/1000).toFixed(0)}t de carcaça/mês (volume do período base)</span>`;
   }
 
   // Card 2: Potencial vs meta (quanto ainda perde por mês)
@@ -4097,7 +4121,7 @@ function setIndColor(boxId,valId,estado,subMsg,subId){
   else{val.style.color='var(--text)';}
   if(subId&&subMsg){const s=document.getElementById(subId);if(s)s.textContent=subMsg;}
 }
-async function calcularIndicadoresExtra(tB,tS,nd){
+async function calcularIndicadoresExtra(tB,tS,nd,metaBovPer,metaSuiPer){
   const diasFiltrados=getHistoricoFiltrado();
   // 1. Custo de condenação por animal
   if(condenacaoCache){
@@ -4131,16 +4155,13 @@ async function calcularIndicadoresExtra(tB,tS,nd){
     const regMiudos=miudosCache.filter(m=>datasSet.has(m.data));
     const kgPorDia={};
     regMiudos.forEach(r=>{if(!kgPorDia[r.data]||r.kgTotalAbate>kgPorDia[r.data])kgPorDia[r.data]=r.kgTotalAbate||0;});
-    // Excluir dias com rendimento diário < 12% (COURO zerado ou dados ausentes)
-    const _pmDia={};
-    regMiudos.forEach(r=>{_pmDia[r.data]=(_pmDia[r.data]||0)+(r.pesoKg||0);});
-    const _incomp=new Set(Object.keys(kgPorDia).filter(dt=>kgPorDia[dt]>0&&(_pmDia[dt]||0)/kgPorDia[dt]*100<12));
-    const pesoTotal=Object.entries(kgPorDia).filter(([dt])=>!_incomp.has(dt)).reduce((a,[,v])=>a+v,0);
-    const pesoMiudos=regMiudos.filter(r=>!_incomp.has(r.data)).reduce((a,m)=>a+(m.pesoKg||0),0);
+    const pesoTotal=Object.values(kgPorDia).reduce((a,v)=>a+v,0);
+    const pesoMiudos=regMiudos.reduce((a,m)=>a+(m.pesoKg||0),0);
     if(pesoTotal>0){
       const aprov=pesoMiudos/pesoTotal*100;
       set('ind-aprov-animal',aprov.toFixed(2)+'%');
-      const sufixo=_incomp.size>0?` (${_incomp.size}d excl.)`:'';
+      const nExcl=contarExcluidos(datasSet);
+      const sufixo=nExcl>0?` (${nExcl}d excl.)`:'';
       // Meta oficial: 27,54% — ≥27,54% verde, ≥22% amarelo, <22% vermelho
       const estAprov=aprov>=27.54?'ok':aprov>=22?'warn':'bad';
       const labelAprov=(aprov>=27.54?'Meta atingida':aprov>=22?'Abaixo da meta':'Crítico')+sufixo;
@@ -4155,15 +4176,13 @@ async function calcularIndicadoresExtra(tB,tS,nd){
   const mediaDiaSui=nd>0?tS/nd:0;
   set('ind-media-dia-bov',mediaDiaBov.toFixed(0)+' cab/dia');
   set('ind-media-dia-sui',mediaDiaSui.toFixed(0)+' cab/dia');
-  // Cor média bov: usa meta média dos dias úteis (seg-sex)
-  const diasUteis=['Segunda','Terça','Quarta','Quinta','Sexta'];
-  const metasValidas=diasUteis.map(d=>params.metas?.[d]?.bov||0).filter(v=>v>0);
-  const metaMediaBov=metasValidas.length?metasValidas.reduce((a,b)=>a+b,0)/metasValidas.length:370;
-  const metaMediaSui=diasUteis.map(d=>params.metas?.[d]?.sui||0).filter(v=>v>0).reduce((a,b,_,arr)=>a+b/arr.length,0)||500;
-  const pctBov=metaMediaBov>0?mediaDiaBov/metaMediaBov*100:100;
-  const pctSui=metaMediaSui>0?mediaDiaSui/metaMediaSui*100:100;
-  const estBov=pctBov>=95?'ok':pctBov>=85?'warn':'bad';
-  const estSui=pctSui>=95?'ok':pctSui>=85?'warn':'bad';
+  // Meta = soma das metas reais de cada dia do período (sábado tem meta menor que dia útil)
+  const metaMediaBov=nd>0?(metaBovPer||0)/nd:0;
+  const metaMediaSui=nd>0?(metaSuiPer||0)/nd:0;
+  const pctBov=metaBovPer>0?tB/metaBovPer*100:null;
+  const pctSui=metaSuiPer>0?tS/metaSuiPer*100:null;
+  const estBov=pctBov===null?null:pctBov>=95?'ok':pctBov>=85?'warn':'bad';
+  const estSui=pctSui===null?null:pctSui>=95?'ok':pctSui>=85?'warn':'bad';
   setIndColor('box-media-dia-bov','ind-media-dia-bov',estBov,`Meta: ${metaMediaBov.toFixed(0)} cab/dia`,'ind-media-dia-bov-sub');
   setIndColor('box-media-dia-sui','ind-media-dia-sui',estSui,`Meta: ${metaMediaSui.toFixed(0)} cab/dia`,'ind-media-dia-sui-sub');
   // 4. Peso médio por animal — calcula da aba Pesos do Sheets
@@ -4189,26 +4208,29 @@ async function calcPesoMedio(diasFiltrados){
     diasFiltrados.forEach(h=>{
       const p=pesosIdx[h.data];
       if(!p) return;
+      if(p.mediaBov!==undefined){
+        // Formato antigo: média kg/cab do dia × cabeças do dia (todas as empresas)
+        const cb=(h.bovino||[]).reduce((a,e)=>a+(e.abatidos||0),0);
+        const cs=(h.suino||[]).reduce((a,e)=>a+(e.abatidos||0),0);
+        if(p.mediaBov>0&&cb>0){kgBovTotal+=p.mediaBov*cb;cabBovTotal+=cb;}
+        if(p.mediaSui>0&&cs>0){kgSuiTotal+=p.mediaSui*cs;cabSuiTotal+=cs;}
+        return;
+      }
 
       // Bovino: peso total FV + Serradão dividido pelas cabeças SÓ dessas empresas
       // (os pesos vêm apenas de FV e Serradão — dividir pelo total de todas as empresas
       //  geraria um peso/cab muito menor do que o real)
-      const kgBovFV=pf(p.pesoBovFV);
-      const kgBovSerr=pf(p.pesoBovSerr);
-      const kgBov=kgBovFV+kgBovSerr;
-      const cabBovFV=kgBovFV>0?((h.bovino||[]).find(e=>e.empresa==='Frigovitta')?.abatidos||0):0;
-      const cabBovSerr=kgBovSerr>0?((h.bovino||[]).find(e=>e.empresa==='Serradão')?.abatidos||0):0;
-      const cabBov=cabBovFV+cabBovSerr;
-      if(kgBov>0&&cabBov>0){kgBovTotal+=kgBov;cabBovTotal+=cabBov;}
-
-      // Suíno: peso total Seali + Serradão dividido pelas cabeças SÓ dessas empresas
-      const kgSuiSeali=pf(p.pesoSuiSeali);
-      const kgSuiSerr=pf(p.pesoSuiSerr);
-      const kgSui=kgSuiSeali+kgSuiSerr;
-      const cabSuiSeali=kgSuiSeali>0?((h.suino||[]).find(e=>e.empresa==='Seali')?.abatidos||0):0;
-      const cabSuiSerr=kgSuiSerr>0?((h.suino||[]).find(e=>e.empresa==='Serradão')?.abatidos||0):0;
-      const cabSui=cabSuiSeali+cabSuiSerr;
-      if(kgSui>0&&cabSui>0){kgSuiTotal+=kgSui;cabSuiTotal+=cabSui;}
+      // Peso e cabeças casados POR EMPRESA; par sem cabeças ou com kg/cab impossível é descartado
+      const par=(kg,lista,emp,min,max)=>{
+        const cab=(lista||[]).find(e=>e.empresa===emp)?.abatidos||0;
+        const k=pf(kg);
+        return k>0&&cab>0&&k/cab>=min&&k/cab<=max?[k,cab]:[0,0];
+      };
+      [par(p.pesoBovFV,h.bovino,'Frigovitta',150,380),par(p.pesoBovSerr,h.bovino,'Serradão',150,380)]
+        .forEach(([k,c])=>{kgBovTotal+=k;cabBovTotal+=c;});
+      // Suíno: Seali + Serradão
+      [par(p.pesoSuiSeali,h.suino,'Seali',50,150),par(p.pesoSuiSerr,h.suino,'Serradão',50,150)]
+        .forEach(([k,c])=>{kgSuiTotal+=k;cabSuiTotal+=c;});
     });
 
     const mediaBov=cabBovTotal>0?kgBovTotal/cabBovTotal:0;
