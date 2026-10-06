@@ -232,7 +232,7 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
       <span class="brand-name">Dashboard Operacional</span>
       <span class="brand-sub">Frigorífico Serradão · Atualização diária</span>
     </div>
-    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.06-001</span>
+    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.06-002</span>
   </div>
   <div class="top-right">
     <div class="legend">
@@ -3014,7 +3014,9 @@ async function carregarMiudosCompletoDoSheets(){
       else if(t<12)miudosDiasExcluidos.set(dt,`total ${t.toFixed(1)}% (incompleto)`);
     });
     if(miudosDiasExcluidos.size)console.log('[Miudos] dias excluídos:',[...miudosDiasExcluidos.entries()]);
-    return regs.filter(r=>!miudosDiasExcluidos.has(r.data));
+    // miudosCache guarda TODOS os registros; o filtro de dias ruins é aplicado
+    // pontualmente nos indicadores e comparativa — não no gráfico histórico.
+    return regs;
   }catch(e){return[];}
 }
 const contarExcluidos=datasSet=>[...miudosDiasExcluidos.keys()].filter(dt=>datasSet.has(dt)).length;
@@ -3029,7 +3031,7 @@ async function renderRendimentoReal(tB,tS,kgTotalFromTA=0){
   console.log(`[Rend] filtro ${filtroAtual.ano}/${filtroAtual.mes} → ${diasFiltrados.length} dias | miudosCache: ${miudosCache?.length||0}`);
   if(!diasFiltrados.length){renderDemoRendimento(tB,tS);return;}
   const datasSet=new Set(diasFiltrados.map(d=>d.data));
-  const registros=miudosCache.filter(m=>datasSet.has(m.data));
+  const registros=miudosCache.filter(m=>datasSet.has(m.data)&&!miudosDiasExcluidos.has(m.data));
   console.log(`[Rend] registros no filtro: ${registros.length} | ex datas hist:`,[...datasSet].slice(0,3),'| ex datas miudos:',miudosCache.slice(0,3).map(m=>m.data));
 
   const norm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim();
@@ -3972,7 +3974,7 @@ const normNome=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').
 // Calcula rendimento real por miúdo: pesoKg / kgTotalAbate * 100, agregado por período
 function calcRendPorMiudo(datasSet, filtroNome){
   if(!miudosCache)return{};
-  const registros=miudosCache.filter(m=>datasSet.has(m.data)&&(!filtroNome||normNome(m.miudo)===normNome(filtroNome)));
+  const registros=miudosCache.filter(m=>datasSet.has(m.data)&&!miudosDiasExcluidos.has(m.data)&&(!filtroNome||normNome(m.miudo)===normNome(filtroNome)));
   // Agrupa por data+miudo: soma pesos e pega maior kgTotalAbate do dia
   const porDia={};
   registros.forEach(r=>{
@@ -4033,7 +4035,7 @@ async function renderAnaliseComparativa(){
   function pesoReal(datasSet){
     const kgDia={};
     (miudosCache||[]).forEach(r=>{
-      if(!datasSet.has(r.data))return;
+      if(!datasSet.has(r.data)||miudosDiasExcluidos.has(r.data))return;
       if(!kgDia[r.data]||r.kgTotalAbate>kgDia[r.data])kgDia[r.data]=r.kgTotalAbate||0;
     });
     return{total:Object.values(kgDia).reduce((a,b)=>a+b,0),dias:Object.keys(kgDia).length};
@@ -4054,7 +4056,7 @@ async function renderAnaliseComparativa(){
   // Calcula rendimento total diretamente: pesoTotal/kgTotal — igual ao ind-aprov-animal
   const calcRendTotal=(datasSet)=>{
     if(!miudosCache)return 0;
-    const regs=miudosCache.filter(m=>datasSet.has(m.data));
+    const regs=miudosCache.filter(m=>datasSet.has(m.data)&&!miudosDiasExcluidos.has(m.data));
     const pesoTotal=regs.reduce((a,r)=>a+(r.pesoKg||0),0);
     const kgPorDia={};
     regs.forEach(r=>{if(!kgPorDia[r.data]||r.kgTotalAbate>kgPorDia[r.data])kgPorDia[r.data]=r.kgTotalAbate||0;});
@@ -4347,7 +4349,7 @@ async function calcularIndicadoresExtra(tB,tS,nd,metaBovPer,metaSuiPer){
   // 2. Aproveitamento do animal
   if(miudosCache){
     const datasSet=new Set(diasFiltrados.map(d=>d.data));
-    const regMiudos=miudosCache.filter(m=>datasSet.has(m.data));
+    const regMiudos=miudosCache.filter(m=>datasSet.has(m.data)&&!miudosDiasExcluidos.has(m.data));
     const kgPorDia={};
     regMiudos.forEach(r=>{if(!kgPorDia[r.data]||r.kgTotalAbate>kgPorDia[r.data])kgPorDia[r.data]=r.kgTotalAbate||0;});
     const pesoTotal=Object.values(kgPorDia).reduce((a,v)=>a+v,0);
