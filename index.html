@@ -7,6 +7,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3/dist/chartjs-plugin-annotation.min.js"></script>
 <style>
 :root{
   /* Cores primárias — paleta Aquila corporativa */
@@ -231,7 +232,7 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
       <span class="brand-name">Dashboard Operacional</span>
       <span class="brand-sub">Frigorífico Serradão · Atualização diária</span>
     </div>
-    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.05-215</span>
+    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.06-001</span>
   </div>
   <div class="top-right">
     <div class="legend">
@@ -4154,7 +4155,14 @@ async function renderAnaliseComparativa(){
       {label:'Meta',data:mesesOrd.map(()=>metaTot),borderColor:'#374151',borderDash:[5,5],borderWidth:1.5,pointRadius:0,fill:false},
     ];
     if(benchTot)datasets.push({label:'Benchmark',data:mesesOrd.map(()=>benchTot),borderColor:'#6366f1',borderDash:[3,3],borderWidth:1.5,pointRadius:0,fill:false});
-    CI['chart-comp-evolucao']=new Chart(ctxEv,{type:'line',data:{labels:labEv,datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:true,position:'bottom',labels:{font:{size:10},boxWidth:10,usePointStyle:true}},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+ctx.raw.toFixed(2)+'%'}},datalabels:{display:false}},scales:{y:{grid:{color:'#f3f4f6'},ticks:{font:{size:11},callback:v=>v.toFixed(2)+'%'}},x:{grid:{color:'#f9fafb'},ticks:{font:{size:10},maxRotation:45}}}},plugins:[ChartDataLabels]});
+    const evAnnotations={};
+    if(!filtroMiudo){
+      const idxMocoto=labEv.indexOf('Mai/26');
+      const idxRecortes=labEv.indexOf('Jun/26');
+      if(idxMocoto>=0)evAnnotations.mocoto={type:'line',xMin:idxMocoto-0.5,xMax:idxMocoto-0.5,borderColor:'rgba(202,138,4,0.55)',borderWidth:1.5,borderDash:[5,3],label:{content:'+ MOCOTÓ',display:true,position:'start',yAdjust:-8,backgroundColor:'rgba(255,253,230,0.92)',color:'#92400e',font:{size:9,weight:'600'},padding:{x:4,y:2}}};
+      if(idxRecortes>=0)evAnnotations.recortes={type:'line',xMin:idxRecortes-0.5,xMax:idxRecortes-0.5,borderColor:'rgba(220,38,38,0.45)',borderWidth:1.5,borderDash:[5,3],label:{content:'+ RECORTES',display:true,position:'end',yAdjust:8,backgroundColor:'rgba(255,241,241,0.92)',color:'#991b1b',font:{size:9,weight:'600'},padding:{x:4,y:2}}};
+    }
+    CI['chart-comp-evolucao']=new Chart(ctxEv,{type:'line',data:{labels:labEv,datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:true,position:'bottom',labels:{font:{size:10},boxWidth:10,usePointStyle:true}},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+ctx.raw.toFixed(2)+'%'}},datalabels:{display:false},annotation:{annotations:evAnnotations}},scales:{y:{grid:{color:'#f3f4f6'},ticks:{font:{size:11},callback:v=>v.toFixed(2)+'%'}},x:{grid:{color:'#f9fafb'},ticks:{font:{size:10},maxRotation:45}}}},plugins:[ChartDataLabels]});
   }
 
   // ── GRÁFICO 2: Barras — ganho mensal vs potencial por miúdo ──
