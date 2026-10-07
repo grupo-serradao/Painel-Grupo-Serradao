@@ -232,7 +232,7 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
       <span class="brand-name">Dashboard Operacional</span>
       <span class="brand-sub">Frigorífico Serradão · Atualização diária</span>
     </div>
-    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.05-219</span>
+    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.05-220</span>
   </div>
   <div class="top-right">
     <div class="legend">
@@ -1173,7 +1173,7 @@ async function salvarDiaNoSheets(d){
     d.suino.forEach(emp=>{const ex=abateRows.find(r=>r[1]===emp.empresa);if(ex){ex[5]=emp.abatidos||0;ex[6]=getMetaEmp(emp.empresa,'sui');}else abateRows.push([d.data,emp.empresa,'suino',0,0,emp.abatidos||0,getMetaEmp(emp.empresa,'sui'),d.diaKey]);});
     if(abateRows.length){
       const abateExist=await sheetsRead('Abates');
-      const jaTem=abateExist.slice(1).some(r=>r[0]===d.data);
+      const jaTem=abateExist.slice(1).some(r=>String(r[0]||'').slice(0,10)===d.data);
       if(!jaTem) await sheetsAppend('Abates',abateRows);
       else {/*console.log('Abates do dia já existem, pulando:',d.data)*/;}
     }
@@ -1221,7 +1221,7 @@ async function salvarDiaNoSheets(d){
     const mBov=d.pesosBov.length?d.pesosBov.reduce((a,p)=>a+(p.media_kg||0),0)/d.pesosBov.length:0;
     const mSui=d.pesosSui.length?d.pesosSui.reduce((a,p)=>a+(p.media_kg||0),0)/d.pesosSui.length:0;
     const histExist=await sheetsRead('Historico_Diario');
-    const jaTemHist=histExist.slice(1).some(r=>r[0]===d.data);
+    const jaTemHist=histExist.slice(1).some(r=>String(r[0]||'').slice(0,10)===d.data);
     if(!jaTemHist) await sheetsAppend('Historico_Diario',[[d.data,tBov,d.metaBov,tSui,d.metaSui,eBov,eSui,mBov.toFixed(2),mSui.toFixed(2)]]);
     else {/*console.log('Histórico do dia já existe, pulando:',d.data)*/;}
     return true;
@@ -1307,7 +1307,14 @@ async function carregarParametrosDoSheets(){
   }catch(e){console.warn('Params Sheets:',e);}
 }
 async function salvarParametrosNoSheets(metasEmp){
-  try{await sheetsClearRange('Parametros');const rows=[];Object.entries(metasEmp).forEach(([emp,dias])=>Object.entries(dias).forEach(([dia,v])=>rows.push([emp,dia,v.bov||0,v.sui||0])));if(rows.length)await sheetsAppend('Parametros',rows);return true;}catch(e){return false;}
+  try{
+    await sheetsClearRange('Parametros');
+    const hdr=['Empresa','Dia','Meta_Bov','Meta_Sui'];
+    const rows=[];
+    Object.entries(metasEmp).forEach(([emp,dias])=>Object.entries(dias).forEach(([dia,v])=>rows.push([emp,dia,v.bov||0,v.sui||0])));
+    await sheetsAppend('Parametros',[hdr,...rows]);
+    return true;
+  }catch(e){return false;}
 }
 
 function salvarURLScript(){
@@ -1655,6 +1662,7 @@ document.addEventListener('DOMContentLoaded',async()=>{
   loadParams();buildParamsGrid();buildMiudosForm();buildCondenacaoForm();renderParadas();
   try{
     const [hist]=await Promise.all([carregarHistoricoCompleto(),carregarBenchmarkDoSheets(),carregarCondenacaoDoSheets().then(d=>{condenacaoCache=d;}),carregarPrecosDoSheets(),carregarParametrosDoSheets()]);
+    buildParamsGrid(); // refaz a grade agora com as metas reais vindas do Sheets (antes só tinha o que estava no localStorage)
     if(hist.length){
       historico=hist;
       dadosDia=historico[historico.length-1];
@@ -1748,7 +1756,7 @@ function copiarDaArea(){const box=document.getElementById('codigo-box');if(!box)
 // ── PARAMS ──
 function buildParamsGrid(){
   const g=document.getElementById('params-dias');if(!g)return;
-  const emps=['Próprio','Serradão','Frigovitta','Tourino','Frigocosta','Frigoguatu','Seali'];
+  const emps=['Próprio','Terceiros','Serradão','Frigovitta','Frigomatos','Frigocosta','Guatu','Hortsul','Seali'];
   g.innerHTML='';
   let h='<div style="display:grid;grid-template-columns:120px repeat(7,1fr);gap:4px;margin-bottom:6px"><div style="font-size:10px;font-weight:700;color:var(--muted)">Empresa</div>';
   DIAS.forEach(d=>{h+=`<div style="font-size:10px;font-weight:700;color:var(--muted);text-align:center">${d.slice(0,3)}</div>`;});
@@ -1783,7 +1791,7 @@ function salvarParametros(){
   params.capSui=+document.getElementById('cap-sui').value;
   params.colabBov=+document.getElementById('colab-bov').value;
   params.colabSui=+document.getElementById('colab-sui').value;
-  const emps=['Próprio','Serradão','Frigovitta','Tourino','Frigocosta','Frigoguatu','Seali'];
+  const emps=['Próprio','Terceiros','Serradão','Frigovitta','Frigomatos','Frigocosta','Guatu','Hortsul','Seali'];
   if(!params.metasEmp)params.metasEmp={};
   emps.forEach(emp=>{if(!params.metasEmp[emp])params.metasEmp[emp]={};DIAS.forEach(dia=>{params.metasEmp[emp][dia]={bov:+(document.getElementById(`meta-bov-${emp}-${dia}`)||{value:0}).value,sui:+(document.getElementById(`meta-sui-${emp}-${dia}`)||{value:0}).value};});});
   localStorage.setItem('frigobet-params',JSON.stringify(params));
@@ -3665,7 +3673,7 @@ async function importarHistorico(){
     let total=0;
     if(importFiles['abates-bov']){al.textContent='Importando abates bovino...';const rows=await readXLSX(importFiles['abates-bov']);const sr=rows.slice(1).filter(r=>r[0]).map(r=>[excelDateToISO(r[0]),r[2]||r[1]||'','bovino',+r[3]||0,+r[5]||0,0,0,r[4]||'']);if(sr.length){await sheetsAppend('Abates',sr);total+=sr.length;}}
     if(importFiles['abates-sui']){al.textContent='Importando abates suíno...';const rows=await readXLSX(importFiles['abates-sui']);const sr=rows.slice(1).filter(r=>r[0]).map(r=>[excelDateToISO(r[0]),r[2]||r[1]||'','suino',0,0,+r[3]||0,+r[5]||0,r[4]||'']);if(sr.length){await sheetsAppend('Abates',sr);total+=sr.length;}}
-    if(importFiles['pesos']){al.textContent='Importando pesos...';const rows=await readXLSX(importFiles['pesos']);const sr=rows.slice(1).filter(r=>r[1]).map(r=>[excelDateToISO(r[1]),'Consolidado','ambos',+r[2]||0,+r[4]||0,0,+r[3]||0,+r[5]||0,0]);if(sr.length){await sheetsAppend('Pesos',sr);total+=sr.length;}}
+    if(importFiles['pesos']){al.textContent='Importando pesos...';const rows=await readXLSX(importFiles['pesos']);const sr=rows.slice(1).filter(r=>r[1]).map(r=>{const d=excelDateToISO(r[1]);return[d?parseInt(d.slice(5,7)):0,d,+r[2]||0,+r[3]||0,+r[4]||0,+r[5]||0];});if(sr.length){await sheetsAppend('Pesos',sr);total+=sr.length;}}
     if(importFiles['miudos']){al.textContent='Importando miúdos...';const rows=await readXLSX(importFiles['miudos']);const sr=rows.slice(1).filter(r=>r[0]&&r[4]).map(r=>{const data=excelDateToISO(r[0]);const kt=+r[6]||0;const pk=+r[5]||0;const pr=kt>0?(pk/kt*100):0;return[data,r[4]||'',0,pk,kt,parseFloat(pr.toFixed(4)),+r[7]||0,+r[9]||0,+r[10]||0];});if(sr.length){await sheetsAppend('Miudos',sr);total+=sr.length;}}
     al.className='alert ok';al.textContent=`✓ ${total} linhas importadas!`;
     historico=await carregarHistoricoCompleto();if(historico.length){popularFiltrosPeriodo();renderDashboard();}
