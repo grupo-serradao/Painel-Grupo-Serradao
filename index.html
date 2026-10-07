@@ -232,7 +232,7 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
       <span class="brand-name">Dashboard Operacional</span>
       <span class="brand-sub">Frigorífico Serradão · Atualização diária</span>
     </div>
-    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.05-218</span>
+    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.05-219</span>
   </div>
   <div class="top-right">
     <div class="legend">
@@ -3459,17 +3459,19 @@ async function salvarHorarioParadas(){
     if(suiMin>0) tempoRows.push([data,'Suino',tSui,kgSui,colabSui,suiMin]);
     if(tempoRows.length){
       // Remove linhas do dia e reinsere — preserva o resto da aba
+      // Filtro por tamanho (não só slice(1)): a aba tem 2 linhas de cabeçalho (rótulo + técnico)
       const exist=await sheetsRead('TempoAbate');
-      const semHoje=(exist||[]).slice(1).filter(r=>String(r[0]||'').slice(0,10)!==data);
+      const semHoje=(exist||[]).filter(r=>r[0]&&String(r[0]).length>=10&&String(r[0]).slice(0,10)!==data);
       const hdr=['Data','Animal','Qtd','TotalKg','Operadores','TempoMin'];
       await sheetsClearRange('TempoAbate');
       await sheetsAppend('TempoAbate',[hdr,...semHoje,...tempoRows]);
       tempoAbateCache=null;
     }
     // Paradas — remove do dia e reinsere
+    // Filtro por tamanho (não só slice(1)): a aba tem 2 linhas de cabeçalho (rótulo + técnico)
     const novasParadas=paradasLista.filter(p=>p.durMin>0).map(p=>[data,p.linha,p.tipo,p.local,p.descricao,p.durMin]);
     const existPar=await sheetsRead('Paradas');
-    const semHojePar=(existPar||[]).slice(1).filter(r=>String(r[0]||'').slice(0,10)!==data);
+    const semHojePar=(existPar||[]).filter(r=>r[0]&&String(r[0]).length>=10&&String(r[0]).slice(0,10)!==data);
     const hdrPar=['Data','Linha','Tipo','Local','Descricao','DuracaoMin'];
     await sheetsClearRange('Paradas');
     await sheetsAppend('Paradas',[hdrPar,...semHojePar,...novasParadas]);
@@ -3849,13 +3851,16 @@ function extExtrairMiudosPRD004(txt){
 }
 
 function extExtrairMiudosMVE002(txt){
+  // Cada item busca o número mais próximo DEPOIS do seu próprio nome no texto — não um índice
+  // sequencial global (que desalinhava tudo quando um item não aparecia no relatório).
   const mapa=[['FIGADO','Fígado'],['CORACAO','Coração'],['DOBRADINHA','Bucho'],
     ['LINGUA','Língua'],['RABADA','Rabo'],['LOMBINHO','Lombinho'],
     ['SANGRIA','Sangria'],['CUPIM','Carne Industrial'],['RETICULO','Omaso']];
-  const nums=(txt.match(/\d{1,4},\d{3}/g)||[]).map(extParsePeso).filter(p=>p>0&&p<50000);
-  let i=0;
-  mapa.forEach(([k,v])=>{if(txt.toUpperCase().includes(k)&&nums[i]!==undefined){
-    if(!extDados.miudos[v])extDados.miudos[v]=0;extDados.miudos[v]+=nums[i];i++;}});
+  mapa.forEach(([k,v])=>{
+    const re=new RegExp(k+'[\\s\\S]{0,300}?(\\d{1,4},\\d{3})','i');
+    const m=txt.match(re);
+    if(m){const p=extParsePeso(m[1]);if(p>0){if(!extDados.miudos[v])extDados.miudos[v]=0;extDados.miudos[v]+=p;}}
+  });
 }
 
 function extAtualizarPreview(){
