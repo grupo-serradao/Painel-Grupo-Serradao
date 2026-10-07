@@ -232,7 +232,7 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
       <span class="brand-name">Dashboard Operacional</span>
       <span class="brand-sub">Frigorífico Serradão · Atualização diária</span>
     </div>
-    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.05-217</span>
+    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.05-218</span>
   </div>
   <div class="top-right">
     <div class="legend">
@@ -2720,16 +2720,23 @@ async function carregarPesosDoSheets(){
 let qualidadeCache=null; // mantido para compatibilidade — não usado
 let condenacaoCache=null;
 async function carregarCondenacaoDoSheets(){
+  const pf=v=>parseFloat(String(v||0).replace(',','.'))||0;
   try{
     const rows=await sheetsRead('Condenacao');
     return rows.slice(1).filter(r=>r[0]&&String(r[0]).length>=10&&!/^data$/i.test(String(r[0]))).map(r=>{
       const data=String(r[0]).slice(0,10);
-      // Nova estrutura: Data | Motivo | Produtor | Frigorifico | Tipo
-      // Antiga: Data | Tipo(Peça/Animal) | Produto | Qtd | Peso | Motivo | ...
-      if(r[1]==='Peça'||r[1]==='Animal inteiro'){
-        // Formato antigo — ignora (já será reimportado)
-        return null;
+      // Formato "Peça" — gravado pelo formulário de Condenação (card Peças): salvarCondenacaoNoSheets()
+      // [Data, 'Peça', Produto, Qtd, Peso]
+      if(r[1]==='Peça'){
+        return{data,tipo:'Peça',produto:String(r[2]||'').trim(),qtd:pf(r[3]),peso:pf(r[4])};
       }
+      // Formato "Animal inteiro" — gravado pelo mesmo botão quando há animais na lista
+      // [Data, 'Animal inteiro', Sexo, 1, Peso, Motivo, Tipo, Produtor, Frigorifico]
+      if(r[1]==='Animal inteiro'){
+        return{data,motivo:String(r[5]||'').trim(),produtor:String(r[7]||'').trim(),frigorifico:String(r[8]||'').trim(),tipo:String(r[6]||'Condenação Total').trim(),peso:pf(r[4])};
+      }
+      // Formato atual — gravado por salvarCondenacaoAnimalClick() (card Animais condenados)
+      // [Data, Motivo, Produtor, Frigorifico, Tipo]
       return{data,motivo:String(r[1]||'').trim(),produtor:String(r[2]||'').trim(),frigorifico:String(r[3]||'').trim(),tipo:String(r[4]||'Condenação Total').trim()};
     }).filter(Boolean);
   }catch(e){return[];}
@@ -2741,9 +2748,9 @@ async function renderCondenacaoAnimalCharts(){
   const datasSet=new Set(diasFiltrados.map(d=>d.data));
   const totalAbatidos=diasFiltrados.reduce((a,h)=>a+(h.bovino||[]).reduce((b,e)=>b+(e.abatidos||0),0),0);
 
-  // Filtro de tipo
+  // Filtro de tipo — esta seção é só "animais inteiros"; registros de Peça (produto/qtd, sem motivo) ficam de fora
   const filtroTipo=document.getElementById('cond-filtro-tipo')?.value||'';
-  let regs=condenacaoCache.filter(r=>datasSet.has(r.data));
+  let regs=condenacaoCache.filter(r=>datasSet.has(r.data)&&r.tipo!=='Peça');
   if(filtroTipo) regs=regs.filter(r=>r.tipo===filtroTipo);
 
   const condRegs=filtroTipo?regs:regs.filter(r=>r.tipo==='Condenação'||r.tipo==='Animal'||!r.tipo);
@@ -2915,7 +2922,7 @@ async function renderCondenacaoReal(tBov){
     'Fígado':precos['Fígado']||0,'Rins':precos['Rins']||0,'Bucho':precos['Bucho']||0};
   const totalAbatidos=tBov||diasFiltrados.reduce((a,h)=>a+(h.bovino||[]).reduce((b,e)=>b+(e.abatidos||0),0),0);
 
-  // Peças condenadas — registros antigos ainda podem existir com tipo='Peça'
+  // Peças condenadas — gravadas pelo card "Condenação" com tipo='Peça'
   const pecas={};CONDENADOS.forEach(p=>{pecas[p]={qtd:0};});
   registros.filter(r=>r.tipo==='Peça'||(!r.tipo&&r.produto)).forEach(r=>{
     if(r.produto&&pecas[r.produto]!==undefined) pecas[r.produto].qtd+=(r.qtd||1);
