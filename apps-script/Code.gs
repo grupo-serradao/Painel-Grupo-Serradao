@@ -1,11 +1,15 @@
-// Painel Grupo Serradão — Apps Script v2.1 (arquivo único: cole TUDO no Code.gs)
+// Painel Grupo Serradão — Apps Script v2.2 (arquivo único: cole TUDO no Code.gs)
 // ────────────────────────────────────────────────────────────────
 // v2.1: nova ação 'update' — altera só as células pedidas, conferindo
 // o valor antigo de cada uma antes. Se alguma não bater, não grava nada.
+// v2.2: 'append' e 'update' agora forçam formato numérico ('General') nas
+// colunas que não são Data, evitando que número gravado numa célula com
+// formatação de data herdada volte corrompido (ex: "1901-04-11") no
+// próximo 'read'.
 
 function doGet(e) {
   return ContentService
-    .createTextOutput(JSON.stringify({ ok: true, status: 'online', versao: '2.1' }))
+    .createTextOutput(JSON.stringify({ ok: true, status: 'online', versao: '2.2' }))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -38,7 +42,11 @@ function doPost(e) {
         if (divergentes.length) {
           return err('Nada foi alterado — valores diferentes do esperado (a planilha mudou?): ' + divergentes.slice(0, 5).join('; '));
         }
-        cells.forEach(function(c) { aba.getRange(c.row, c.col).setValue(c.value); });
+        cells.forEach(function(c) {
+          var cel = aba.getRange(c.row, c.col);
+          cel.setValue(c.value);
+          if (typeof c.value === 'number') cel.setNumberFormat('General');
+        });
         SpreadsheetApp.flush();
       } finally {
         lock.releaseLock();
@@ -65,7 +73,14 @@ function doPost(e) {
       var rows = body.values;
       if (rows && rows.length > 0) {
         var startRow = sheet.getLastRow() + 1;
-        sheet.getRange(startRow, 1, rows.length, rows[0].length).setValues(rows);
+        var numCols = rows[0].length;
+        sheet.getRange(startRow, 1, rows.length, numCols).setValues(rows);
+        // Evita herdar formatação de data de linhas antigas na mesma coluna: um número gravado
+        // numa célula formatada como data volta do getValues() como objeto Date (ex: "1901-04-11"),
+        // corrompendo o valor no próximo 'read'. Não mexe na coluna 1 (Data), só nas demais.
+        if (numCols > 1) {
+          sheet.getRange(startRow, 2, rows.length, numCols - 1).setNumberFormat('General');
+        }
       }
       return ok({});
     }
