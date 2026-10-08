@@ -3477,10 +3477,18 @@ async function salvarHorarioParadas(){
     if(bovMin>0) tempoRows.push([data,'Bovino',tBov,kgBov,colabBov,bovMin-pausaTotalMin]);
     if(suiMin>0) tempoRows.push([data,'Suino',tSui,kgSui,colabSui,suiMin]);
     if(tempoRows.length){
-      // Remove linhas do dia e reinsere — preserva o resto da aba
+      // Remove só as linhas do dia para os animais que estão sendo salvos agora e reinsere — preserva o resto da aba.
+      // Importante: se só bovino (ou só suíno) está preenchido neste salvamento, a linha do outro
+      // animal já salva para essa mesma data não pode ser descartada (bug anterior apagava o
+      // animal "ausente" do formulário a cada resalvamento, causando perda intermitente de dados).
+      const animaisSalvos=new Set(tempoRows.map(r=>String(r[1]||'').toLowerCase()));
       // Filtro por tamanho (não só slice(1)): a aba tem 2 linhas de cabeçalho (rótulo + técnico)
       const exist=await sheetsRead('TempoAbate');
-      const semHoje=(exist||[]).filter(r=>r[0]&&String(r[0]).length>=10&&String(r[0]).slice(0,10)!==data);
+      const semHoje=(exist||[]).filter(r=>{
+        if(!r[0]||String(r[0]).length<10)return false;
+        if(String(r[0]).slice(0,10)!==data)return true;
+        return !animaisSalvos.has(String(r[1]||'').toLowerCase());
+      });
       const hdr=['Data','Animal','Qtd','TotalKg','Operadores','TempoMin'];
       await sheetsClearRange('TempoAbate');
       await sheetsAppend('TempoAbate',[hdr,...semHoje,...tempoRows]);
