@@ -1,4 +1,4 @@
-// Painel Grupo Serradão — Apps Script v2.2 (arquivo único: cole TUDO no Code.gs)
+// Painel Grupo Serradão — Apps Script v2.3 (arquivo único: cole TUDO no Code.gs)
 // ────────────────────────────────────────────────────────────────
 // v2.1: nova ação 'update' — altera só as células pedidas, conferindo
 // o valor antigo de cada uma antes. Se alguma não bater, não grava nada.
@@ -6,10 +6,16 @@
 // colunas que não são Data, evitando que número gravado numa célula com
 // formatação de data herdada volte corrompido (ex: "1901-04-11") no
 // próximo 'read'.
+// v2.3: 'clear' e 'append' agora chamam SpreadsheetApp.flush() antes de
+// responder, e 'append' passou a usar trava (LockService) como o 'update'
+// já usava. Sem isso, chamadas em sequência rápida (cada uma é uma
+// execução HTTP separada) podiam não enxergar a escrita da chamada
+// anterior ainda não comitada — foi isso que apagou quase toda a aba
+// TempoAbate numa reconstrução nesta sessão.
 
 function doGet(e) {
   return ContentService
-    .createTextOutput(JSON.stringify({ ok: true, status: 'online', versao: '2.2' }))
+    .createTextOutput(JSON.stringify({ ok: true, status: 'online', versao: '2.3' }))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -72,14 +78,25 @@ function doPost(e) {
     if (action === 'append') {
       var rows = body.values;
       if (rows && rows.length > 0) {
-        var startRow = sheet.getLastRow() + 1;
-        var numCols = rows[0].length;
-        sheet.getRange(startRow, 1, rows.length, numCols).setValues(rows);
-        // Evita herdar formatação de data de linhas antigas na mesma coluna: um número gravado
-        // numa célula formatada como data volta do getValues() como objeto Date (ex: "1901-04-11"),
-        // corrompendo o valor no próximo 'read'. Não mexe na coluna 1 (Data), só nas demais.
-        if (numCols > 1) {
-          sheet.getRange(startRow, 2, rows.length, numCols - 1).setNumberFormat('General');
+        // Trava + flush: sem isso, chamadas 'append' em sequência rápida (cada uma é uma
+        // execução/HTTP request separada) podem não enxergar a escrita da chamada anterior
+        // ainda não comitada no backend, calcular o mesmo startRow e se sobrescreverem —
+        // foi exatamente isso que apagou quase toda a aba TempoAbate numa reconstrução.
+        var lockA = LockService.getScriptLock();
+        lockA.waitLock(20000);
+        try {
+          var startRow = sheet.getLastRow() + 1;
+          var numCols = rows[0].length;
+          sheet.getRange(startRow, 1, rows.length, numCols).setValues(rows);
+          // Evita herdar formatação de data de linhas antigas na mesma coluna: um número gravado
+          // numa célula formatada como data volta do getValues() como objeto Date (ex: "1901-04-11"),
+          // corrompendo o valor no próximo 'read'. Não mexe na coluna 1 (Data), só nas demais.
+          if (numCols > 1) {
+            sheet.getRange(startRow, 2, rows.length, numCols - 1).setNumberFormat('General');
+          }
+          SpreadsheetApp.flush();
+        } finally {
+          lockA.releaseLock();
         }
       }
       return ok({});
@@ -91,6 +108,7 @@ function doPost(e) {
     // nas células, corrompendo números salvos depois
     if (action === 'clear') {
       sheet.clear();
+      SpreadsheetApp.flush();
       return ok({});
     }
 
