@@ -3344,6 +3344,7 @@ async function salvarSoCondenacao(){
   if(!date){alert('Selecione a data antes de salvar.');return;}
   const btn=event.target;btn.disabled=true;btn.textContent='Salvando...';
   const ok=await salvarCondenacaoNoSheets(date);
+  if(ok){condenacaoCache=null;atualizarStatusDia(date);}
   btn.disabled=false;btn.textContent='Salvar condenação';
   alert(ok?'✓ Condenação salva no Sheets!':'✕ Erro ao salvar. Verifique a conexão.');
 }
@@ -3354,11 +3355,17 @@ async function salvarCondenacaoNoSheets(date){
     const peso=parseFloat(document.getElementById(`cd-${p}-peso`)?.value)||0;
     if(qtd>0) rows.push([date,'Peça',p,qtd,peso]);
   });
-  animaisCondLista.forEach(a=>{
-    if(a.motivo||a.peso>0) rows.push([date,'Animal inteiro',a.sexo,1,a.peso,a.motivo,a.tipo||'Condenação Total',a.produtor||'',a.frigorifico||'']);
-  });
   if(!rows.length) return true;
-  try{await sheetsAppend('Condenacao',rows);return true;}catch(e){console.error(e);return false;}
+  try{
+    // Remove lançamentos de Peça dessa mesma data e reinsere — um append simples
+    // duplicaria as peças condenadas ao resalvar o mesmo dia (ex: corrigir um valor).
+    const exist=await sheetsRead('Condenacao');
+    const hdr=['Data','Motivo','Produtor','Frigorifico','Tipo'];
+    const semHoje=(exist||[]).filter(r=>r[0]&&String(r[0]).length>=10&&!/^data$/i.test(String(r[0]))&&!(r[1]==='Peça'&&String(r[0]).slice(0,10)===date));
+    await sheetsClearRange('Condenacao');
+    await sheetsAppend('Condenacao',[hdr,...semHoje,...rows]);
+    return true;
+  }catch(e){console.error(e);return false;}
 }
 
 // ── MIÚDOS ──
@@ -3608,7 +3615,16 @@ function calcMiudosTotais(){
 }
 function checkMR(){const date=document.getElementById('miudos-date')?.value;const tp=parseFloat(document.getElementById('m-total-peso')?.textContent?.replace(/\./g,'').replace(',','.'))||0;const btn=document.getElementById('btn-salvar-miudos');if(btn)btn.disabled=!date||tp<=0;}
 function onMiudosDateChange(){const date=document.getElementById('miudos-date')?.value;const lbl=document.getElementById('miudos-date-label');if(lbl&&date){const[y,m,d]=date.split('-');lbl.textContent=`${d}/${m}/${y}`;}checkMR();atualizarStatusDia(date);}
-async function atualizarStatusDia(date){const el=document.getElementById('miudos-status-dia');if(!el||!date)return;el.textContent='Verificando...';try{const mm=await carregarMiudosDoSheets(date);if(mm.length){el.innerHTML=`<span style="color:var(--green);font-weight:700">✓ ${mm.length} miúdos registrados</span><br><span style="color:var(--muted);font-size:11px">Clique Salvar para sobrescrever</span>`;}else{el.innerHTML='<span style="color:var(--muted)">Nenhum lançamento para esta data</span>';}}catch(e){el.textContent='Não foi possível verificar';}}
+async function atualizarStatusDia(date){const el=document.getElementById('miudos-status-dia');if(!el||!date)return;el.textContent='Verificando...';try{
+  const mm=await carregarMiudosDoSheets(date);
+  if(!condenacaoCache)condenacaoCache=await carregarCondenacaoDoSheets();
+  const cond=condenacaoCache.filter(r=>r.data===date&&r.tipo==='Peça');
+  const linhas=[];
+  linhas.push(mm.length?`<span style="color:var(--green);font-weight:700">✓ ${mm.length} miúdos registrados</span>`:'<span style="color:var(--muted)">Nenhum miúdo lançado</span>');
+  linhas.push(cond.length?`<span style="color:var(--green);font-weight:700">✓ ${cond.length} peças condenadas registradas</span>`:'<span style="color:var(--muted)">Nenhuma condenação lançada</span>');
+  if(mm.length||cond.length)linhas.push('<span style="color:var(--muted);font-size:11px">Clique Salvar para sobrescrever</span>');
+  el.innerHTML=linhas.join('<br>');
+}catch(e){el.textContent='Não foi possível verificar';}}
 async function salvarCarcacaNoSheets(date){
   const rows=CATEGORIAS.map(cat=>{
     const cab=parseFloat(document.getElementById(`cc-${cat}-cab`)?.value)||0;
