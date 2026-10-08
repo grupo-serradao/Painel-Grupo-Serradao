@@ -1,4 +1,4 @@
-// Painel Grupo Serradão — Apps Script v2.3 (arquivo único: cole TUDO no Code.gs)
+// Painel Grupo Serradão — Apps Script v2.4 (arquivo único: cole TUDO no Code.gs)
 // ────────────────────────────────────────────────────────────────
 // v2.1: nova ação 'update' — altera só as células pedidas, conferindo
 // o valor antigo de cada uma antes. Se alguma não bater, não grava nada.
@@ -8,14 +8,17 @@
 // próximo 'read'.
 // v2.3: 'clear' e 'append' agora chamam SpreadsheetApp.flush() antes de
 // responder, e 'append' passou a usar trava (LockService) como o 'update'
-// já usava. Sem isso, chamadas em sequência rápida (cada uma é uma
-// execução HTTP separada) podiam não enxergar a escrita da chamada
-// anterior ainda não comitada — foi isso que apagou quase toda a aba
-// TempoAbate numa reconstrução nesta sessão.
+// já usava.
+// v2.4: nova ação 'overwrite' — limpa e reescreve uma aba inteira a partir
+// da linha 1 numa única execução sob trava, sem depender de getLastRow()
+// nem de duas chamadas HTTP separadas (clear + append). Resolve o caso em
+// que a aba virou uma "Tabela" do Sheets e a linha de cabeçalho sobrevive
+// ao clear() mesmo com flush() — o 'overwrite' sobrescreve essa linha
+// diretamente e apaga qualquer resíduo abaixo do que foi escrito.
 
 function doGet(e) {
   return ContentService
-    .createTextOutput(JSON.stringify({ ok: true, status: 'online', versao: '2.3' }))
+    .createTextOutput(JSON.stringify({ ok: true, status: 'online', versao: '2.4' }))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -110,6 +113,40 @@ function doPost(e) {
       sheet.clear();
       SpreadsheetApp.flush();
       return ok({});
+    }
+
+    // ── SOBRESCREVER DO ZERO (clear + escreve a partir da linha 1, numa só trava) ──
+    // Existe porque em algumas abas o clear() não é suficiente sozinho — se a aba virou
+    // uma "Tabela" do Sheets em algum momento, a linha de cabeçalho da tabela sobrevive ao
+    // clear() mesmo com flush(), e um 'append' logo em seguida (que calcula a linha a partir
+    // de getLastRow()) acaba gravando depois desse resíduo em vez de na linha 1. Esta ação
+    // não depende de getLastRow() nem de duas chamadas separadas: limpa e escreve na linha 1
+    // dentro da MESMA execução, sob trava, e confere o resultado antes de responder.
+    if (action === 'overwrite') {
+      var rowsO = body.values;
+      if (!rowsO || !rowsO.length) return err('Nenhuma linha informada');
+      var lockO = LockService.getScriptLock();
+      lockO.waitLock(30000);
+      try {
+        sheet.clear();
+        var numColsO = rowsO[0].length;
+        sheet.getRange(1, 1, rowsO.length, numColsO).setValues(rowsO);
+        if (numColsO > 1) {
+          sheet.getRange(1, 2, rowsO.length, numColsO - 1).setNumberFormat('General');
+        }
+        // Se sobrou alguma linha abaixo do que acabou de ser escrito (resíduo de tabela,
+        // conteúdo antigo maior que o novo etc.), apaga explicitamente até o fim da aba.
+        SpreadsheetApp.flush();
+        var lastRowDepois = sheet.getLastRow();
+        if (lastRowDepois > rowsO.length) {
+          sheet.deleteRows(rowsO.length + 1, lastRowDepois - rowsO.length);
+        }
+        SpreadsheetApp.flush();
+      } finally {
+        lockO.releaseLock();
+      }
+      var lastRowFinal = sheet.getLastRow();
+      return ok({ linhasGravadas: rowsO.length, totalNaAba: lastRowFinal });
     }
 
     return err('Ação desconhecida: ' + action);
