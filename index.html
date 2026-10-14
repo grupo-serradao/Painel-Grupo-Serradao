@@ -2041,11 +2041,17 @@ async function renderDashboard(){
   ['top-date','vol-date-label','vol-bov-date','vol-sui-date'].forEach(id=>set(id,dl));
   const tB=d.bovino.reduce((a,r)=>a+(r.abatidos||0),0);
   const tS=d.suino.reduce((a,r)=>a+(r.abatidos||0),0);
-  // Eficiência: média diária / capacidade diária (não acumulado / capacidade)
+  // Eficiência acumulada: média diária do período filtrado / capacidade diária
   const mediaDiaBov=tB/d.nd;
   const mediaDiaSui=tS/d.nd;
   const eB=d.capBov>0?Math.round(mediaDiaBov/d.capBov*100):0;
   const eS=d.capSui>0?Math.round(mediaDiaSui/d.capSui*100):0;
+  // Eficiência do dia: só o último dia do período filtrado (não a média) / capacidade diária
+  const ultimoDia=diasFiltrados[diasFiltrados.length-1];
+  const tBdia=filtrarPorEmpresa(ultimoDia.bovino).reduce((a,r)=>a+(r.abatidos||0),0);
+  const tSdia=filtrarPorEmpresa(ultimoDia.suino).reduce((a,r)=>a+(r.abatidos||0),0);
+  const eBdia=d.capBov>0?Math.round(tBdia/d.capBov*100):0;
+  const eSdia=d.capSui>0?Math.round(tSdia/d.capSui*100):0;
   const fiBov=document.getElementById('fi-bov');const fiSui=document.getElementById('fi-sui');
   if(fiBov)fiBov.className='f '+(tB>=d.metaBov*0.95?'f-g':tB>=d.metaBov*0.90?'f-y':'f-r');
   if(fiSui)fiSui.className='f '+(tS>=d.metaSui*0.95?'f-g':tS>=d.metaSui*0.90?'f-y':'f-r');
@@ -2054,8 +2060,8 @@ async function renderDashboard(){
   set('sum-cap-bov',d.capBov);set('sum-cap-sui',d.capSui);set('sum-efic-bov',eB+'%');set('sum-efic-sui',eS+'%');
   setPct('sum-bov-pct',d.metaBov>0?(tB-d.metaBov)/d.metaBov*100:0);
   setPct('sum-sui-pct',d.metaSui>0?(tS-d.metaSui)/d.metaSui*100:0);
-  setEfic('efic-bov-dia','efic-bov-dia-bar',eB,'bov');setEfic('efic-bov-acum','efic-bov-acum-bar',eB,'bov');
-  setEfic('efic-sui-dia','efic-sui-dia-bar',eS,'sui');setEfic('efic-sui-acum','efic-sui-acum-bar',eS,'sui');
+  setEfic('efic-bov-dia','efic-bov-dia-bar',eBdia,'bov');setEfic('efic-bov-acum','efic-bov-acum-bar',eB,'bov');
+  setEfic('efic-sui-dia','efic-sui-dia-bar',eSdia,'sui');setEfic('efic-sui-acum','efic-sui-acum-bar',eS,'sui');
   renderVolTable('tbl-bov',d.bovino,d.metaBov,tB);renderVolTable('tbl-sui',d.suino,d.metaSui,tS);
 
   // Gráficos: se filtrado por ano sem mês, agrupa por mês; se filtrado por mês, mostra dia a dia
