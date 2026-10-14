@@ -2677,7 +2677,9 @@ async function carregarTempoAbateDoSheets(){
         qtd:pf(r[2]),
         totalKg:pf(r[3]),
         operadores:pf(r[4]),
-        tempoMin:pf(r[5])
+        // Tempo não pode ser negativo — se vier com sinal de menos (erro de digitação ou de
+        // cálculo), considera o módulo em vez de descartar o dia inteiro.
+        tempoMin:Math.abs(pf(r[5]))
       }))
       .filter(r=>r.qtd>0);
     // Desduplicar por data+animal: fica com a linha de maior tempoMin
