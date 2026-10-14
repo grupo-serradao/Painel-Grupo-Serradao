@@ -3479,7 +3479,9 @@ async function salvarHorarioParadas(){
     const boxFimSui=document.getElementById('m-box-fim-sui')?.value||'';
     const colabSui=parseFloat(document.getElementById('m-colab-sui')?.value)||0;
     const toMin=(ini,fim)=>{if(!ini||!fim)return 0;const[ih,im]=ini.split(':').map(Number);const[fh,fm]=fim.split(':').map(Number);return Math.max(0,(fh*60+fm)-(ih*60+im));};
-    const pausaTotalMin=paradasLista.reduce((a,p)=>a+(p.durMin||0),0);
+    // Paradas são por linha (Bovino ou Suíno) — cada uma só pode descontar do tempo da sua própria linha
+    const pausaBovMin=paradasLista.filter(p=>p.linha==='Bovino').reduce((a,p)=>a+(p.durMin||0),0);
+    const pausaSuiMin=paradasLista.filter(p=>p.linha==='Suíno').reduce((a,p)=>a+(p.durMin||0),0);
     const bovMin=toMin(boxIniBov,boxFimBov);
     const suiMin=toMin(boxIniSui,boxFimSui);
     const tBov=(dadosDia?.bovino||[]).reduce((a,e)=>a+(e.abatidos||0),0);
@@ -3487,8 +3489,8 @@ async function salvarHorarioParadas(){
     const kgBov=(dadosDia?.pesosBov||[]).reduce((a,p)=>a+(p.peso_total_kg||0),0);
     const kgSui=(dadosDia?.pesosSui||[]).reduce((a,p)=>a+(p.peso_total_kg||0),0);
     const tempoRows=[];
-    if(bovMin>0) tempoRows.push([data,'Bovino',tBov,kgBov,colabBov,bovMin-pausaTotalMin]);
-    if(suiMin>0) tempoRows.push([data,'Suino',tSui,kgSui,colabSui,suiMin]);
+    if(bovMin>0) tempoRows.push([data,'Bovino',tBov,kgBov,colabBov,Math.max(0,bovMin-pausaBovMin)]);
+    if(suiMin>0) tempoRows.push([data,'Suino',tSui,kgSui,colabSui,Math.max(0,suiMin-pausaSuiMin)]);
     if(tempoRows.length){
       // Remove só as linhas do dia para os animais que estão sendo salvos agora e reinsere — preserva o resto da aba.
       // Importante: se só bovino (ou só suíno) está preenchido neste salvamento, a linha do outro
