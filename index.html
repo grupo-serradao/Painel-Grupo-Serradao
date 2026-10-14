@@ -1211,7 +1211,7 @@ async function salvarDiaNoSheets(d){
     if(carcRows.length){
       const carcExist=await sheetsRead('Carcaca');
       const jaTemCarc=carcExist.slice(1).some(r=>String(r[0]).slice(0,10)===d.data);
-      if(!jaTemCarc) await sheetsAppend('Carcaca',carcRows);
+      if(!jaTemCarc){await sheetsAppend('Carcaca',carcRows);carcacaCache=null;}
     }
 
     const tBov=d.bovino.reduce((a,r)=>a+(r.abatidos||0),0);
@@ -3517,6 +3517,7 @@ async function salvarHorarioParadas(){
     const hdrPar=['Data','Linha','Tipo','Local','Descricao','DuracaoMin'];
     await sheetsClearRange('Paradas');
     await sheetsAppend('Paradas',[hdrPar,...semHojePar,...novasParadas]);
+    paradasCache=null;
     showAlert('op-alert','Horários e paradas salvos!','ok');
   }catch(e){showAlert('op-alert','Erro: '+e.message,'err');}
   if(btn){btn.disabled=false;btn.textContent='Salvar horários e paradas';}
@@ -3599,12 +3600,8 @@ function calcMiudosTotais(){
   const pm=parseFloat(document.getElementById('m-peso-machos')?.value)||0;
   const pf=parseFloat(document.getElementById('m-peso-femeas')?.value)||0;
   const tc=mac+fem;const tp=pm+pf;const me=tc>0?(tp/tc):0;
-  const mediaMacho=mac>0?(pm/mac):0;const mediaFemea=fem>0?(pf/fem):0;
   const fn=n=>n.toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:2});
   set('m-total-cab',fn(tc));set('m-total-peso',fn(tp));set('m-media',fn(me));
-  set('vol-media-total',me>0?fn(me):'—');
-  set('sum-media-bov-m',mediaMacho>0?fn(mediaMacho):'—');
-  set('sum-media-bov-f',mediaFemea>0?fn(mediaFemea):'—');
   // Suíno
   const smac=parseFloat(document.getElementById('m-sui-machos')?.value)||0;
   const sfem=parseFloat(document.getElementById('m-sui-femeas')?.value)||0;
