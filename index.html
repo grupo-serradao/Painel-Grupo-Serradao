@@ -232,7 +232,7 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
       <span class="brand-name">Dashboard Operacional</span>
       <span class="brand-sub">Frigorífico Serradão · Atualização diária</span>
     </div>
-    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.14-224</span>
+    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.14-225</span>
   </div>
   <div class="top-right">
     <div class="legend">
@@ -342,8 +342,8 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
       <div class="card-body">
         <table class="tbl" id="tbl-bov"><thead><tr><th>Empresa</th><th class="r">Real</th><th class="r">Meta</th><th class="r">Farol</th></tr></thead><tbody></tbody></table>
         <div class="efic-row">
-          <div class="efic-mini"><div class="efic-mini-label">Eficiência do dia</div><div class="efic-mini-val" id="efic-bov-dia">—</div><div class="efic-bar"><div class="efic-bar-fill" id="efic-bov-dia-bar" style="background:var(--bov);width:0%"></div></div></div>
-          <div class="efic-mini"><div class="efic-mini-label">Eficiência acumulada</div><div class="efic-mini-val" id="efic-bov-acum">—</div><div class="efic-bar"><div class="efic-bar-fill" id="efic-bov-acum-bar" style="background:var(--bov);width:0%"></div></div></div>
+          <div class="efic-mini"><div class="efic-mini-label" id="efic-bov-dia-label">Eficiência do dia</div><div class="efic-mini-val" id="efic-bov-dia">—</div><div class="efic-bar"><div class="efic-bar-fill" id="efic-bov-dia-bar" style="background:var(--bov);width:0%"></div></div></div>
+          <div class="efic-mini"><div class="efic-mini-label" id="efic-bov-acum-label">Eficiência acumulada</div><div class="efic-mini-val" id="efic-bov-acum">—</div><div class="efic-bar"><div class="efic-bar-fill" id="efic-bov-acum-bar" style="background:var(--bov);width:0%"></div></div></div>
         </div>
       </div>
     </div>
@@ -352,8 +352,8 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
       <div class="card-body">
         <table class="tbl" id="tbl-sui"><thead><tr><th>Empresa</th><th class="r">Real</th><th class="r">Meta</th><th class="r">Farol</th></tr></thead><tbody></tbody></table>
         <div class="efic-row">
-          <div class="efic-mini"><div class="efic-mini-label">Eficiência do dia</div><div class="efic-mini-val" id="efic-sui-dia">—</div><div class="efic-bar"><div class="efic-bar-fill" id="efic-sui-dia-bar" style="background:var(--sui);width:0%"></div></div></div>
-          <div class="efic-mini"><div class="efic-mini-label">Eficiência acumulada</div><div class="efic-mini-val" id="efic-sui-acum">—</div><div class="efic-bar"><div class="efic-bar-fill" id="efic-sui-acum-bar" style="background:var(--sui);width:0%"></div></div></div>
+          <div class="efic-mini"><div class="efic-mini-label" id="efic-sui-dia-label">Eficiência do dia</div><div class="efic-mini-val" id="efic-sui-dia">—</div><div class="efic-bar"><div class="efic-bar-fill" id="efic-sui-dia-bar" style="background:var(--sui);width:0%"></div></div></div>
+          <div class="efic-mini"><div class="efic-mini-label" id="efic-sui-acum-label">Eficiência acumulada</div><div class="efic-mini-val" id="efic-sui-acum">—</div><div class="efic-bar"><div class="efic-bar-fill" id="efic-sui-acum-bar" style="background:var(--sui);width:0%"></div></div></div>
         </div>
       </div>
     </div>
@@ -2041,17 +2041,48 @@ async function renderDashboard(){
   ['top-date','vol-date-label','vol-bov-date','vol-sui-date'].forEach(id=>set(id,dl));
   const tB=d.bovino.reduce((a,r)=>a+(r.abatidos||0),0);
   const tS=d.suino.reduce((a,r)=>a+(r.abatidos||0),0);
-  // Eficiência acumulada: média diária do período filtrado / capacidade diária
+  // Eficiência: dois níveis — o nível mais específico selecionado no filtro (dia > mês > ano)
+  // e o nível imediatamente acima (dia→mês, mês→ano, ano→todo o período).
+  // Ex: com um dia selecionado, "do dia" é aquele dia e "acumulada" é o mês inteiro.
+  //     com um mês selecionado (sem dia), "do dia" vira o mês e "acumulada" é o ano inteiro.
+  //     com só o ano selecionado, "do dia" vira o ano e "acumulada" é todo o histórico.
+  const diasDoPeriodo=(ano,mes,dia)=>historico.filter(h=>{
+    if(ano&&h.data.slice(0,4)!==ano)return false;
+    if(mes&&h.data.slice(5,7)!==mes)return false;
+    if(dia&&h.data.slice(8,10)!==dia)return false;
+    return true;
+  });
+  const eficDoPeriodo=dias=>{
+    if(!dias.length)return{eB:0,eS:0};
+    const sB=dias.reduce((a,h)=>a+filtrarPorEmpresa(h.bovino).reduce((x,r)=>x+(r.abatidos||0),0),0);
+    const sS=dias.reduce((a,h)=>a+filtrarPorEmpresa(h.suino).reduce((x,r)=>x+(r.abatidos||0),0),0);
+    const n=dias.length;
+    return{
+      eB:params.capBov>0?Math.round((sB/n)/params.capBov*100):0,
+      eS:params.capSui>0?Math.round((sS/n)/params.capSui*100):0
+    };
+  };
+  const{ano,mes,dia}=filtroAtual;
+  let especifico,acumulado,labelEspecifico,labelAcumulado;
+  if(dia){
+    especifico=eficDoPeriodo(diasDoPeriodo(ano,mes,dia));labelEspecifico='Eficiência do dia';
+    acumulado=eficDoPeriodo(diasDoPeriodo(ano,mes,null));labelAcumulado='Eficiência acumulada (mês)';
+  }else if(mes){
+    especifico=eficDoPeriodo(diasDoPeriodo(ano,mes,null));labelEspecifico='Eficiência do mês';
+    acumulado=eficDoPeriodo(diasDoPeriodo(ano,null,null));labelAcumulado='Eficiência acumulada (ano)';
+  }else{
+    especifico=eficDoPeriodo(diasDoPeriodo(ano,null,null));labelEspecifico='Eficiência do ano';
+    acumulado=eficDoPeriodo(diasDoPeriodo(null,null,null));labelAcumulado='Eficiência acumulada (total)';
+  }
+  const eBdia=especifico.eB,eSdia=especifico.eS,eBacum=acumulado.eB,eSacum=acumulado.eS;
+  set('efic-bov-dia-label',labelEspecifico);set('efic-bov-acum-label',labelAcumulado);
+  set('efic-sui-dia-label',labelEspecifico);set('efic-sui-acum-label',labelAcumulado);
+  // Eficiência do resumo (card "Eficiência bovino/suíno"): sempre a do período exatamente
+  // como filtrado (dia, mês ou ano) — independente dos níveis dos mini-cards acima.
   const mediaDiaBov=tB/d.nd;
   const mediaDiaSui=tS/d.nd;
   const eB=d.capBov>0?Math.round(mediaDiaBov/d.capBov*100):0;
   const eS=d.capSui>0?Math.round(mediaDiaSui/d.capSui*100):0;
-  // Eficiência do dia: só o último dia do período filtrado (não a média) / capacidade diária
-  const ultimoDia=diasFiltrados[diasFiltrados.length-1];
-  const tBdia=filtrarPorEmpresa(ultimoDia.bovino).reduce((a,r)=>a+(r.abatidos||0),0);
-  const tSdia=filtrarPorEmpresa(ultimoDia.suino).reduce((a,r)=>a+(r.abatidos||0),0);
-  const eBdia=d.capBov>0?Math.round(tBdia/d.capBov*100):0;
-  const eSdia=d.capSui>0?Math.round(tSdia/d.capSui*100):0;
   const fiBov=document.getElementById('fi-bov');const fiSui=document.getElementById('fi-sui');
   if(fiBov)fiBov.className='f '+(tB>=d.metaBov*0.95?'f-g':tB>=d.metaBov*0.90?'f-y':'f-r');
   if(fiSui)fiSui.className='f '+(tS>=d.metaSui*0.95?'f-g':tS>=d.metaSui*0.90?'f-y':'f-r');
@@ -2060,8 +2091,8 @@ async function renderDashboard(){
   set('sum-cap-bov',d.capBov);set('sum-cap-sui',d.capSui);set('sum-efic-bov',eB+'%');set('sum-efic-sui',eS+'%');
   setPct('sum-bov-pct',d.metaBov>0?(tB-d.metaBov)/d.metaBov*100:0);
   setPct('sum-sui-pct',d.metaSui>0?(tS-d.metaSui)/d.metaSui*100:0);
-  setEfic('efic-bov-dia','efic-bov-dia-bar',eBdia,'bov');setEfic('efic-bov-acum','efic-bov-acum-bar',eB,'bov');
-  setEfic('efic-sui-dia','efic-sui-dia-bar',eSdia,'sui');setEfic('efic-sui-acum','efic-sui-acum-bar',eS,'sui');
+  setEfic('efic-bov-dia','efic-bov-dia-bar',eBdia,'bov');setEfic('efic-bov-acum','efic-bov-acum-bar',eBacum,'bov');
+  setEfic('efic-sui-dia','efic-sui-dia-bar',eSdia,'sui');setEfic('efic-sui-acum','efic-sui-acum-bar',eSacum,'sui');
   renderVolTable('tbl-bov',d.bovino,d.metaBov,tB);renderVolTable('tbl-sui',d.suino,d.metaSui,tS);
 
   // Gráficos: se filtrado por ano sem mês, agrupa por mês; se filtrado por mês, mostra dia a dia
