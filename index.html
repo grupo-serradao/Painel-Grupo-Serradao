@@ -232,7 +232,7 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
       <span class="brand-name">Dashboard Operacional</span>
       <span class="brand-sub">Frigorífico Serradão · Atualização diária</span>
     </div>
-    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.14-225</span>
+    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.27-226</span>
   </div>
   <div class="top-right">
     <div class="legend">
@@ -2716,7 +2716,7 @@ async function carregarTempoAbateDoSheets(){
     // Desduplicar por data+animal: fica com a linha de maior tempoMin
     const idx={};
     todas.forEach(r=>{
-      const k=r.data+'|'+r.animal.toLowerCase();
+      const k=r.data+'|'+r.animal.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
       if(!idx[k]||r.tempoMin>idx[k].tempoMin) idx[k]=r;
     });
     const dedup=Object.values(idx);
@@ -3523,34 +3523,46 @@ async function salvarHorarioParadas(){
     const kgSui=(dadosDia?.pesosSui||[]).reduce((a,p)=>a+(p.peso_total_kg||0),0);
     const tempoRows=[];
     if(bovMin>0) tempoRows.push([data,'Bovino',tBov,kgBov,colabBov,Math.max(0,bovMin-pausaBovMin)]);
-    if(suiMin>0) tempoRows.push([data,'Suino',tSui,kgSui,colabSui,Math.max(0,suiMin-pausaSuiMin)]);
+    if(suiMin>0) tempoRows.push([data,'Suíno',tSui,kgSui,colabSui,Math.max(0,suiMin-pausaSuiMin)]);
+    // "Suíno" e "Suino" coexistem na planilha (importação vs. painel) — compara sem acento
+    const normLinha=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').trim().toLowerCase();
+    // Linhas (animais) sendo salvas agora: as com horário de box preenchido ou com paradas no formulário.
+    // Só essas são substituídas no dia — a outra linha já salva para a mesma data é preservada.
+    const linhasSalvas=new Set([...tempoRows.map(r=>normLinha(r[1])),...paradasLista.map(p=>normLinha(p.linha))]);
     if(tempoRows.length){
       // Remove só as linhas do dia para os animais que estão sendo salvos agora e reinsere — preserva o resto da aba.
       // Importante: se só bovino (ou só suíno) está preenchido neste salvamento, a linha do outro
       // animal já salva para essa mesma data não pode ser descartada (bug anterior apagava o
       // animal "ausente" do formulário a cada resalvamento, causando perda intermitente de dados).
-      const animaisSalvos=new Set(tempoRows.map(r=>String(r[1]||'').toLowerCase()));
+      const animaisSalvos=new Set(tempoRows.map(r=>normLinha(r[1])));
       // Filtro por tamanho (não só slice(1)): a aba tem 2 linhas de cabeçalho (rótulo + técnico)
       const exist=await sheetsRead('TempoAbate');
       const semHoje=(exist||[]).filter(r=>{
         if(!r[0]||String(r[0]).length<10)return false;
         if(String(r[0]).slice(0,10)!==data)return true;
-        return !animaisSalvos.has(String(r[1]||'').toLowerCase());
+        return !animaisSalvos.has(normLinha(r[1]));
       });
       const hdr=['Data','Animal','Qtd','TotalKg','Operadores','TempoMin'];
       await sheetsClearRange('TempoAbate');
       await sheetsAppend('TempoAbate',[hdr,...semHoje,...tempoRows]);
       tempoAbateCache=null;
     }
-    // Paradas — remove do dia e reinsere
+    // Paradas — remove do dia só as da(s) linha(s) sendo salvas e reinsere; as da outra linha ficam.
+    // Sem horário nem paradas no formulário, nada é apagado.
     // Filtro por tamanho (não só slice(1)): a aba tem 2 linhas de cabeçalho (rótulo + técnico)
-    const novasParadas=paradasLista.filter(p=>p.durMin>0).map(p=>[data,p.linha,p.tipo,p.local,p.descricao,p.durMin]);
-    const existPar=await sheetsRead('Paradas');
-    const semHojePar=(existPar||[]).filter(r=>r[0]&&String(r[0]).length>=10&&String(r[0]).slice(0,10)!==data);
-    const hdrPar=['Data','Linha','Tipo','Local','Descricao','DuracaoMin'];
-    await sheetsClearRange('Paradas');
-    await sheetsAppend('Paradas',[hdrPar,...semHojePar,...novasParadas]);
-    paradasCache=null;
+    if(linhasSalvas.size){
+      const novasParadas=paradasLista.filter(p=>p.durMin>0).map(p=>[data,p.linha,p.tipo,p.local,p.descricao,p.durMin]);
+      const existPar=await sheetsRead('Paradas');
+      const semHojePar=(existPar||[]).filter(r=>{
+        if(!r[0]||String(r[0]).length<10)return false;
+        if(String(r[0]).slice(0,10)!==data)return true;
+        return !linhasSalvas.has(normLinha(r[1]));
+      });
+      const hdrPar=['Data','Linha','Tipo','Local','Descricao','DuracaoMin'];
+      await sheetsClearRange('Paradas');
+      await sheetsAppend('Paradas',[hdrPar,...semHojePar,...novasParadas]);
+      paradasCache=null;
+    }
     showAlert('op-alert','Horários e paradas salvos!','ok');
   }catch(e){showAlert('op-alert','Erro: '+e.message,'err');}
   if(btn){btn.disabled=false;btn.textContent='Salvar horários e paradas';}
