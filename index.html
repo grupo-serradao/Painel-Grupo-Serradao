@@ -232,7 +232,7 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
       <span class="brand-name">Dashboard Operacional</span>
       <span class="brand-sub">Frigorífico Serradão · Atualização diária</span>
     </div>
-    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.27-226</span>
+    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.27-227</span>
   </div>
   <div class="top-right">
     <div class="legend">
@@ -1190,7 +1190,9 @@ async function salvarDiaNoSheets(d){
     const pesoSuiSerr=suiSerr?.peso_total_kg||0;
     if(pesoBovFV>0||pesoBovSerr>0||pesoSuiSeali>0||pesoSuiSerr>0){
       const pesoExist=await sheetsRead('Pesos');
-      const jaTemPeso=pesoExist.slice(1).some(r=>String(r[1]||r[0]).slice(0,10)===d.data);
+      // A data pode vir como número serial do Sheets (célula com formato numérico) — normaliza antes de comparar
+      const dataPeso=v=>typeof v==='number'?new Date(Math.round((v-25569)*86400*1000)).toISOString().slice(0,10):String(v||'').slice(0,10);
+      const jaTemPeso=pesoExist.slice(1).some(r=>dataPeso(r[1]||r[0])===d.data);
       if(!jaTemPeso) await sheetsAppend('Pesos',[[mes,d.data,pesoBovFV,pesoBovSerr,pesoSuiSeali,pesoSuiSerr]]);
       else {/*console.log('Pesos do dia já existem, pulando:',d.data)*/;}
     }

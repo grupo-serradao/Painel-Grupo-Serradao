@@ -1,4 +1,4 @@
-// Painel Grupo Serradão — Apps Script v2.4 (arquivo único: cole TUDO no Code.gs)
+// Painel Grupo Serradão — Apps Script v2.5 (arquivo único: cole TUDO no Code.gs)
 // ────────────────────────────────────────────────────────────────
 // v2.1: nova ação 'update' — altera só as células pedidas, conferindo
 // o valor antigo de cada uma antes. Se alguma não bater, não grava nada.
@@ -15,10 +15,13 @@
 // que a aba virou uma "Tabela" do Sheets e a linha de cabeçalho sobrevive
 // ao clear() mesmo com flush() — o 'overwrite' sobrescreve essa linha
 // diretamente e apaga qualquer resíduo abaixo do que foi escrito.
+// v2.5: o formato numérico do 'append'/'overwrite' passa a valer só para as
+// colunas que recebem número. Antes ele era aplicado em toda coluna depois da
+// primeira, e na aba Pesos (data na coluna B) a data virava número (46302).
 
 function doGet(e) {
   return ContentService
-    .createTextOutput(JSON.stringify({ ok: true, status: 'online', versao: '2.4' }))
+    .createTextOutput(JSON.stringify({ ok: true, status: 'online', versao: '2.5' }))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -94,9 +97,7 @@ function doPost(e) {
           // Evita herdar formatação de data de linhas antigas na mesma coluna: um número gravado
           // numa célula formatada como data volta do getValues() como objeto Date (ex: "1901-04-11"),
           // corrompendo o valor no próximo 'read'. Não mexe na coluna 1 (Data), só nas demais.
-          if (numCols > 1) {
-            sheet.getRange(startRow, 2, rows.length, numCols - 1).setNumberFormat('General');
-          }
+          formatarColunasNumericas(sheet, startRow, rows);
           SpreadsheetApp.flush();
         } finally {
           lockA.releaseLock();
@@ -131,9 +132,7 @@ function doPost(e) {
         sheet.clear();
         var numColsO = rowsO[0].length;
         sheet.getRange(1, 1, rowsO.length, numColsO).setValues(rowsO);
-        if (numColsO > 1) {
-          sheet.getRange(1, 2, rowsO.length, numColsO - 1).setNumberFormat('General');
-        }
+        if (rowsO.length > 1) formatarColunasNumericas(sheet, 2, rowsO.slice(1));  // linha 1 = cabeçalho
         // Se sobrou alguma linha abaixo do que acabou de ser escrito (resíduo de tabela,
         // conteúdo antigo maior que o novo etc.), apaga explicitamente até o fim da aba.
         SpreadsheetApp.flush();
@@ -158,6 +157,22 @@ function doPost(e) {
 
 // ── Helpers ──────────────────────────────────────────────────────
 // Mesmo formato que o 'read' devolve (datas em ISO UTC)
+// Formato numérico só nas colunas em que todos os valores gravados são números — evita
+// herdar formatação de data em coluna numérica sem converter a coluna de data (que pode
+// não ser a primeira, ex.: aba Pesos) em número.
+function formatarColunasNumericas(sheet, startRow, rows) {
+  var numCols = rows[0].length;
+  for (var c = 0; c < numCols; c++) {
+    var temNumero = false, soNumero = true;
+    for (var r = 0; r < rows.length; r++) {
+      var v = rows[r][c];
+      if (typeof v === 'number') temNumero = true;
+      else if (v !== '' && v !== null && v !== undefined) { soNumero = false; break; }
+    }
+    if (temNumero && soNumero) sheet.getRange(startRow, c + 1, rows.length, 1).setNumberFormat('General');
+  }
+}
+
 function celula(cell) {
   if (cell instanceof Date) {
     return Utilities.formatDate(cell, 'UTC', "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
