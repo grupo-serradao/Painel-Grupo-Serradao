@@ -232,7 +232,7 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
       <span class="brand-name">Dashboard Operacional</span>
       <span class="brand-sub">Frigorífico Serradão · Atualização diária</span>
     </div>
-    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.10.28-229</span>
+    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.11.03-230</span>
   </div>
   <div class="top-right">
     <div class="legend">
@@ -597,8 +597,8 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
 <div class="panel" id="panel-rendimento">
   <div class="sec-hdr">Rendimento de subprodutos — bovino &amp; suíno</div>
   <div class="perda-cards">
-    <div class="perda-card"><div class="perda-card-label">Perda total estimada · bovino</div><div class="perda-card-val" id="rend-perda-bov">—</div><div class="perda-card-sub">Acumulado junho</div></div>
-    <div class="perda-card"><div class="perda-card-label">Perda total estimada · suíno</div><div class="perda-card-val" id="rend-perda-sui">—</div><div class="perda-card-sub">Acumulado junho</div></div>
+    <div class="perda-card"><div class="perda-card-label">Perda total estimada · bovino</div><div class="perda-card-val" id="rend-perda-bov">—</div><div class="perda-card-sub rend-perda-periodo">Acumulado do período</div></div>
+    <div class="perda-card"><div class="perda-card-label">Perda total estimada · suíno</div><div class="perda-card-val" id="rend-perda-sui">—</div><div class="perda-card-sub rend-perda-periodo">Acumulado do período</div></div>
     <div class="perda-card"><div class="perda-card-label">Maior perda unitária</div><div class="perda-card-val lingua" id="rend-maior-nome">—</div><div class="perda-card-sub" id="rend-maior-val">—</div></div>
     <div class="perda-card"><div class="perda-card-label">Vs benchmark do setor</div><div class="perda-card-val" id="rend-bench-acima" style="font-size:18px">—</div><div class="perda-card-sub" id="rend-bench-sub">miúdos acima do benchmark</div></div>
   </div>
@@ -1173,8 +1173,23 @@ async function salvarDiaNoSheets(d){
     d.suino.forEach(emp=>{const ex=abateRows.find(r=>r[1]===emp.empresa);if(ex){ex[5]=emp.abatidos||0;ex[6]=getMetaEmp(emp.empresa,'sui');}else abateRows.push([d.data,emp.empresa,'suino',0,0,emp.abatidos||0,getMetaEmp(emp.empresa,'sui'),d.diaKey]);});
     if(abateRows.length){
       const abateExist=await sheetsRead('Abates');
-      const jaTem=abateExist.slice(1).some(r=>String(r[0]||'').slice(0,10)===d.data);
-      if(!jaTem) await sheetsAppend('Abates',abateRows);
+      const pfA=v=>parseFloat(String(v??0).replace(',','.'))||0;
+      // Linhas já gravadas para o dia (índice na aba = índice+1, pois a linha 1 é o cabeçalho)
+      const doDia=abateExist.map((r,i)=>({r,linha:i+1})).slice(1).filter(x=>String(x.r[0]||'').slice(0,10)===d.data);
+      const jaTemAbate=doDia.some(x=>pfA(x.r[3])+pfA(x.r[5])>0);
+      if(!doDia.length) await sheetsAppend('Abates',abateRows);
+      else if(!jaTemAbate){
+        // O dia existe só com metas (tudo zerado — ex.: importado do Painel de Abate antes do
+        // abate acontecer). Preenche essas linhas em vez de pular o dia.
+        const cells=[],novas=[];
+        abateRows.forEach(nr=>{
+          const ex=doDia.find(x=>String(x.r[1]||'').trim()===nr[1]);
+          if(!ex){novas.push(nr);return;}
+          [3,4,5,6].forEach(c=>{if(pfA(ex.r[c])!==pfA(nr[c]))cells.push({row:ex.linha,col:c+1,expected:ex.r[c],value:nr[c]});});
+        });
+        if(cells.length) await sheetsCall('update',{sheet:'Abates',cells});
+        if(novas.length) await sheetsAppend('Abates',novas);
+      }
       else {/*console.log('Abates do dia já existem, pulando:',d.data)*/;}
     }
 
@@ -1282,7 +1297,11 @@ async function carregarHistoricoCompleto(){
       }
     });
 
-    return Object.values(porData).map(d=>{
+    // Dia com ZERO abatido em todas as empresas (bovino e suíno) não é dia de abate: é feriado
+    // ou o dia de hoje que só tem as metas lançadas. Contar esse dia derrubaria médias e eficiências.
+    return Object.values(porData).filter(d=>
+      d.bovino.reduce((a,e)=>a+e.abatidos,0)+d.suino.reduce((a,e)=>a+e.abatidos,0)>0
+    ).map(d=>{
       const m=metasPorData[d.data]||{};
       const tBov=d.bovino.reduce((a,e)=>a+e.abatidos,0);
       const tSui=d.suino.reduce((a,e)=>a+e.abatidos,0);
@@ -3185,6 +3204,8 @@ async function renderRendimentoReal(tB,tS,kgTotalFromTA=0){
 
   set('rend-perda-bov',fmtMoeda(perdaTotal));
   set('rend-perda-sui','—');
+  const _perLbl=filtroAtual.dia?fmtBR(diasFiltrados[diasFiltrados.length-1].data):(document.getElementById('filtro-resumo')?.textContent||'');
+  document.querySelectorAll('.rend-perda-periodo').forEach(el=>el.textContent='Acumulado · '+(_perLbl.split(' · ')[0].split(' (')[0]||'período'));
   if(maiorPerda){set('rend-maior-nome',maiorPerda.nome);set('rend-maior-val',fmtMoeda(maiorPerda.perda)+' acumulado');}
   else{set('rend-maior-nome','—');set('rend-maior-val','Nenhuma perda no período');}
 
@@ -3233,7 +3254,7 @@ function renderMiudosTable(id,rows,totalAbtPadrao){
       const sinal=diffB>=0?'▲':'▼';
       benchCell=`<td class="r"><span style="font-size:10px;color:${cor}" title="${sinal}${Math.abs(diffB).toFixed(2)}% vs benchmark">${bench.toFixed(2)}</span></td>`;
     }
-    tbody.innerHTML+=`<tr><td>${r.nome}</td><td class="r">${r.meta.toFixed(2)}</td><td class="r">${r.real.toFixed(2)}</td>${benchCell}<td class="r">${fmt(Math.round(vol))}</td><td class="r">${p}</td><td class="r">${f}</td></tr>`;
+    tbody.innerHTML+=`<tr><td>${r.nome}</td><td class="r">${r.meta.toFixed(Math.round(r.meta*1000)%10?3:2)}</td><td class="r">${r.real.toFixed(2)}</td>${benchCell}<td class="r">${fmt(Math.round(vol))}</td><td class="r">${p}</td><td class="r">${f}</td></tr>`;
   });
 }
 
@@ -3422,7 +3443,7 @@ async function carregarBenchmarkDoSheets(){
     if(Object.keys(novo).length>0){BENCHMARK_SETOR=novo;}
   }catch(e){/* Benchmark: usando fallback */}
 }
-const MIUDOS=[{nome:'Aorta',meta:0.07},{nome:'Bucho',meta:1.45},{nome:'Carne Industrial',meta:0.65},{nome:'Colmeia',meta:0.23},{nome:'Coração',meta:0.57},{nome:'Couro',meta:17.50},{nome:'Diafragma',meta:0.48},{nome:'Esôfago',meta:0.14},{nome:'Fígado',meta:2.08},{nome:'Língua',meta:0.36},{nome:'Lombinho',meta:0.25},{nome:'Mocotó',meta:0.54},{nome:'Omaso',meta:0.36},{nome:'Pulmão',meta:0.00},{nome:'Rabo',meta:0.57},{nome:'Recortes',meta:0.55},{nome:'Rins',meta:0.00},{nome:'Sangria',meta:1.17},{nome:'Tendão',meta:0.30},{nome:'Traqueia',meta:0.12},{nome:'Vergalho',meta:0.15}];
+const MIUDOS=[{nome:'Aorta',meta:0.07},{nome:'Bucho',meta:1.45},{nome:'Carne Industrial',meta:0.65},{nome:'Colmeia',meta:0.23},{nome:'Coração',meta:0.57},{nome:'Couro',meta:17.50},{nome:'Diafragma',meta:0.48},{nome:'Esôfago',meta:0.14},{nome:'Fígado',meta:2.075},{nome:'Língua',meta:0.357},{nome:'Lombinho',meta:0.25},{nome:'Mocotó',meta:0.54},{nome:'Omaso',meta:0.36},{nome:'Pulmão',meta:0.00},{nome:'Rabo',meta:0.57},{nome:'Recortes',meta:0.55},{nome:'Rins',meta:0.00},{nome:'Sangria',meta:1.165},{nome:'Tendão',meta:0.30},{nome:'Traqueia',meta:0.12},{nome:'Vergalho',meta:0.15}];
 function buildMiudosForm(){
   const tb=document.getElementById('tbody-miudos-form');if(!tb)return;tb.innerHTML='';
   const totalCab=(+(document.getElementById('m-machos')?.value)||0)+(+(document.getElementById('m-femeas')?.value)||0);
