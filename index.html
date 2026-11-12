@@ -232,7 +232,7 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
       <span class="brand-name">Dashboard Operacional</span>
       <span class="brand-sub">Frigorífico Serradão · Atualização diária</span>
     </div>
-    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.11.12-231</span>
+    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.11.12-232</span>
   </div>
   <div class="top-right">
     <div class="legend">
@@ -2193,8 +2193,10 @@ async function renderDashboard(){
 
   set('prod-bov-h',temposBov.length>0?ritmoBov.toFixed(1):'—');
   set('prod-sui-h',temposSui.length>0?ritmoSui.toFixed(1):'—');
-  set('prod-colab-bov',temposBov.length>0?(colabBovReal>0?tB/d.nd/colabBovReal:0).toFixed(1):'—');
-  set('prod-colab-sui',temposSui.length>0?(colabSuiReal>0?tS/d.nd/colabSuiReal:0).toFixed(1):'—');
+  // Cab/colaborador: cabeças e operadores da MESMA fonte (Tempo de Abate), nos mesmos dias —
+  // não mistura o total do Painel de Abate (que tem dias sem tempo lançado) com operadores da Produtividade
+  set('prod-colab-bov',temposBov.length>0?(colabBovReal>0?qtdBovTA/temposBov.length/colabBovReal:0).toFixed(1):'—');
+  set('prod-colab-sui',temposSui.length>0?(colabSuiReal>0?qtdSuiTA/temposSui.length/colabSuiReal:0).toFixed(1):'—');
   // Só exibe KgHH se há dados reais de TempoAbate no período
   set('prod-ahh-bov',temposBov.length>0&&kgHHBov>0?kgHHBov.toFixed(2):'—');
   set('prod-ahh-sui',temposSui.length>0&&kgHHSui>0?kgHHSui.toFixed(2):'—');
