@@ -232,7 +232,7 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
       <span class="brand-name">Dashboard Operacional</span>
       <span class="brand-sub">Frigorífico Serradão · Atualização diária</span>
     </div>
-    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.11.03-230</span>
+    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.11.12-231</span>
   </div>
   <div class="top-right">
     <div class="legend">
@@ -3202,11 +3202,12 @@ async function renderRendimentoReal(tB,tS,kgTotalFromTA=0){
   }
   if(benchSub) benchSub.textContent=`miúdos acima do benchmark do setor`;
 
-  set('rend-perda-bov',fmtMoeda(perdaTotal));
+  set('rend-perda-bov',registros.length?fmtMoeda(perdaTotal):'—');
   set('rend-perda-sui','—');
   const _perLbl=filtroAtual.dia?fmtBR(diasFiltrados[diasFiltrados.length-1].data):(document.getElementById('filtro-resumo')?.textContent||'');
   document.querySelectorAll('.rend-perda-periodo').forEach(el=>el.textContent='Acumulado · '+(_perLbl.split(' · ')[0].split(' (')[0]||'período'));
-  if(maiorPerda){set('rend-maior-nome',maiorPerda.nome);set('rend-maior-val',fmtMoeda(maiorPerda.perda)+' acumulado');}
+  if(!registros.length){set('rend-maior-nome','—');set('rend-maior-val','Sem miúdos lançados no período');}
+  else if(maiorPerda){set('rend-maior-nome',maiorPerda.nome);set('rend-maior-val',fmtMoeda(maiorPerda.perda)+' acumulado');}
   else{set('rend-maior-nome','—');set('rend-maior-val','Nenhuma perda no período');}
 
   const rank=linhas.filter(l=>l.perda<0).sort((a,b)=>a.perda-b.perda);
