@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Importador 12/11-c — Abate, Paradas e Condenação até 12/11</title>
+<style>
+  body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:900px;margin:30px auto;padding:0 16px;color:#111827;background:#f8fafc}
+  h1{font-size:20px;margin-bottom:4px}
+  .sub{color:#64748b;font-size:13px;margin-bottom:18px}
+  .card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:18px 20px}
+  label{display:block;font-size:12px;font-weight:700;color:#475569;margin-bottom:4px}
+  input[type=text]{width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;box-sizing:border-box}
+  button{border:none;border-radius:8px;padding:11px 20px;font-size:14px;font-weight:700;cursor:pointer;margin:10px 8px 0 0;color:#fff}
+  #btnConf{background:#2563eb} #btnGrav{background:#16a34a}
+  button:disabled{background:#94a3b8!important;cursor:not-allowed}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin-top:10px}
+  td,th{border-bottom:1px solid #e5e7eb;padding:6px 8px;text-align:left} td.r,th.r{text-align:right}
+  #log{background:#0f172a;color:#cbd5e1;border-radius:8px;padding:14px;font-family:monospace;font-size:12px;white-space:pre-wrap;max-height:460px;overflow-y:auto;margin-top:14px}
+  .ok{color:#4ade80}.err{color:#f87171}.warn{color:#fbbf24}
+</style>
+</head>
+<body>
+<h1>Importador 12/11-c — Abate, Pesos, Paradas e Condenação até 12/11</h1>
+<div class="sub">Abates e Pesos de 10 a 12/11 · Paradas de 04 a 12/11 (inclui as que foram completadas no Excel) · Condenação de 10 e 12/11</div>
+<div class="card">
+  <label>URL do Apps Script</label>
+  <input type="text" id="url">
+  <button id="btnConf" onclick="conferir()">1. Conferir (não grava nada)</button>
+  <button id="btnGrav" onclick="gravar()" disabled>2. Gravar</button>
+  <div id="resumo"></div>
+  <div id="log"></div>
+</div>
+<script>
+const PLANO_ = {"C": [], "NOVO": {"abates": [["2026-11-10", "Serradão", "bovino", 54, 110, 172, 230, "Terça"], ["2026-11-10", "Frigovitta", "bovino", 36, 150, 0, 0, "Terça"], ["2026-11-10", "Frigocosta", "bovino", 20, 40, 80, 60, "Terça"], ["2026-11-10", "Frigomatos", "bovino", 36, 50, 128, 220, "Terça"], ["2026-11-10", "Hortsul", "bovino", 10, 20, 0, 0, "Terça"], ["2026-11-10", "Guatu", "bovino", 20, 0, 0, 0, "Terça"], ["2026-11-10", "Seali", "suino", 0, 0, 128, 0, "Terça"], ["2026-11-11", "Serradão", "bovino", 54, 110, 110, 230, "Quarta"], ["2026-11-11", "Frigovitta", "bovino", 0, 150, 0, 0, "Quarta"], ["2026-11-11", "Frigocosta", "bovino", 36, 40, 100, 60, "Quarta"], ["2026-11-11", "Frigomatos", "bovino", 54, 50, 120, 120, "Quarta"], ["2026-11-11", "Seali", "suino", 0, 0, 112, 128, "Quarta"], ["2026-11-12", "Serradão", "bovino", 89, 110, 120, 230, "Quinta"], ["2026-11-12", "Frigovitta", "bovino", 123, 150, 0, 0, "Quinta"], ["2026-11-12", "Frigocosta", "bovino", 38, 40, 0, 60, "Quinta"], ["2026-11-12", "Frigomatos", "bovino", 36, 50, 120, 220, "Quinta"], ["2026-11-12", "Hortsul", "bovino", 18, 20, 0, 0, "Quinta"], ["2026-11-12", "Guatu", "bovino", 18, 20, 0, 0, "Quinta"], ["2026-11-12", "Seali", "suino", 0, 0, 60, 128, "Quinta"]], "pesos": [[11, "2026-11-10", 8556.5, 17823, 11121.5, 15322.5], [11, "2026-11-11", 0, 18115.5, 10680, 8575], [11, "2026-11-12", 33380.5, 29025, 5378, 8591]], "paradas": [["2026-11-03", "Bovino", "Operacional", "DESL. CABEÇA", "CABEÇA DIFÍCIL DE DESLOCAR, FOI NECESSÁRIO USAR A SERRA.", 6.67], ["2026-11-03", "Bovino", "Operacional", "2º PÉ", "PENDURAR O PÉ DI BOI", 2.0], ["2026-11-03", "Bovino", "Operacional", "NOREA", "CARRETILHA AGARROU NA NOREA", 0.83], ["2026-11-03", "Bovino", "Operacional", "SERRA CARCAÇA", "AJUSTE DA SERRA DEVIDO AO TAMANHO DO ANIMAL", 2.83], ["2026-11-03", "Bovino", "Operacional", "ROLETE", "COURO PRESO DEVIDO AO TAMANHO DO ANIMAL", 6.67], ["2026-11-03", "Suíno", "Operacional", "BALANÇA", "SUÍNO AGARROU NA ROSCA, SISTEMA", 2.75], ["2026-11-03", "Suíno", "Operacional", "AREA SUJA", "AMARRAR PÉ DO SUÍNO", 1.75], ["2026-11-03", "Suíno", "Operacional", "PATA DIANTEIRA", "LIMPEZA DE PELOS", 1.25], ["2026-11-04", "Bovino", "Operacional", "FALHA", "TROCA DE LOTE, ESPAÇO DADO NA LINHA PARA SEPARAR LOTE", 2.27], ["2026-11-04", "Bovino", "Operacional", "MESA DE VÍSCERAS", "RETIRADA DE VÍSCERAS VERMELHAS", 1.33], ["2026-11-04", "Bovino", "Operacional", "ROLETE", "COURO PRESO, DEVIDO AO TAMANHO DO ANIMAL", 2.2], ["2026-11-04", "Suíno", "Operacional", "AREA SUJA", "AMARRAR PÉ DO SUÍNO", 1.67], ["2026-11-04", "Suíno", "Operacional", "BALANÇA", "SUÍNO AGARROU NA ROSCA, SISTEMA", 2.67], ["2026-11-04", "Suíno", "Operacional", "SERRA CARCAÇA", "DIFICULDADE NA HORA DE SERRAR A CARCAÇA", 1.83], ["2026-11-05", "Bovino", "Operacional", "ROLETE", "COURO PRESO, DEVIDO AO TAMANHO DO ANIMAL.", 4.17], ["2026-11-05", "Bovino", "Operacional", "ROSCA", "BOI AGARROU NA ROSCA", 1.0], ["2026-11-05", "Bovino", "Operacional", "ESFOLA DE CABEÇA", "DIFICULDADE NA HORA DA ESFOLA, BOI GRANDE.", 2.0], ["2026-11-05", "Suíno", "Operacional", "AREA SUJA", "AMARRAR O PÉ DO SUÍNO", 3.33], ["2026-11-05", "Suíno", "Operacional", "CORREDOR", "ARRASTAR SUÍNO NO CORREDOR, SUÍNO QUEBRADO.", 4.67], ["2026-11-06", "Bovino", "Manutenção", "SERRA PEITO", "SERRA APRESENTOU DEFEITO", 10.0], ["2026-11-06", "Bovino", "Operacional", "BALANÇA", "IMPRESSORA DE ETIQUETA DE RASTREABILIDADE DEU PROBLEMA", 30.0], ["2026-11-06", "Bovino", "Operacional", "BOX", "BARRA ESTAVA VAZIA", 5.0], ["2026-11-06", "Suíno", "Operacional", "ÁREA SUJA", "AMARRAR O PÉ DO SUÍNO", 3.67], ["2026-11-06", "Suíno", "Operacional", "PATA DIANTEIRA", "TIRAR OS PÊLOS", 1.0], ["2026-11-06", "Suíno", "Operacional", "CORREDOR", "ARRASTAR SUÍNO NO CORREDOR, SUÍNO QUEBRADO", 4.0], ["2026-11-06", "Suíno", "Operacional", "ÁREA SUJA", "VOLTAR COM O SUÍNO PARA A LINHA", 1.5], ["2026-11-06", "Suíno", "Operacional", "BALANÇA", "TROCA DE LOTE", 1.17], ["2026-11-09", "Bovino", "Operacional", "BOX", "CONTROLE COM DEFEITO", 2.5], ["2026-11-09", "Bovino", "Operacional", "BOX", "FALTOU BOI NO CORREDOR", 4.33], ["2026-11-09", "Bovino", "Operacional", "ROLETE", "COURO PRESO", 1.0], ["2026-11-09", "Suíno", "Operacional", "ÁREA SUJA", "AMARRAR O PÉ DO SUÍNO", 6.33], ["2026-11-09", "Suíno", "Operacional", "CORREDOR", "ARRASTAR SUÍNO NO CORREDOR, SUÍNO QUEBRADO", 3.17], ["2026-11-09", "Suíno", "Operacional", "PATA DIANTEIRA", "LIMPEZA DE PÊLOS", 3.17], ["2026-11-09", "Suíno", "Operacional", "BALANÇA", "TROCA DE LOTE", 1.0], ["2026-11-10", "Bovino", "Operacional", "MESA DE VÍSCERAS", "RETIRADA DE VÍSCERAS VERMELHAS", 2.33], ["2026-11-10", "Bovino", "Operacional", "ESFOLA DE CABEÇA", "DIFICULDADE NA ESFOLA, BOI GRANDE", 1.67], ["2026-11-10", "Bovino", "Operacional", "NOREA", "CARRETILHA AGARROU NA NOREA", 2.5], ["2026-11-10", "Bovino", "Manutenção", "MESA DE VÍSCERAS", "MESA PAROU DE RODAR", 20.0], ["2026-11-10", "Suíno", "Operacional", "ÁREA SUJA", "AMARRAR O PÉ DO SUÍNO", 6.67], ["2026-11-10", "Suíno", "Operacional", "ÁREA SUJA", "VOLTAR COM O SUÍNO PARA A LINHA", 2.33], ["2026-11-10", "Suíno", "Operacional", "CORREDOR", "ARRASTAR SUÍNO CORREDOR, SUÍNO QUEBRADO.", 3.17], ["2026-11-10", "Suíno", "Operacional", "PATA DIANTEIRA", "TIRAR PELÔ DO SUÍNO", 2.0], ["2026-11-11", "Bovino", "Operacional", "ROLETE", "COURO PRESO DEVIDO AO TAMANHO DO ANIMAL.", 2.0], ["2026-11-11", "Bovino", "Operacional", "MESA DE VISCERAS", "ACUMULO DE PRODUÇÃO", 3.17], ["2026-11-11", "Bovino", "Operacional", "SERRA CARCAÇA", "DIFICULDADE PARA SERRAR DEVIDO AO TAMANHO DO ANIMAL", 1.0], ["2026-11-11", "Suíno", "Operacional", "AREA SUJA", "AMARRAR O PÉ DO SUÍNO", 5.33], ["2026-11-11", "Suíno", "Operacional", "CORREDOR", "ARRASTAR SUÍNO CORREDOR, SUÍNO QUEBRADO.", 4.17], ["2026-11-11", "Suíno", "Operacional", "PATA DIANTEIRA", "TIRAR PELÔ DO SUÍNO", 2.5], ["2026-11-12", "Bovino", "Operacional", "2º PÉ", "AMARRAR O PÉ DO BOI", 2.5], ["2026-11-12", "Bovino", "Operacional", "SERRA CHIFRE", "ANIMAL GRANDE, DIFICULDADE PARA SERRAR O CHIFRE", 0.83], ["2026-11-12", "Bovino", "Operacional", "ESFOLA DE CABEÇA", "ANIMAL GRANDE, DIFICULDADE NA ESFOLA DA CABEÇA", 1.17], ["2026-11-12", "Bovino", "Operacional", "ROLETE", "COURO PRESO DEVIDO AO TAMANHO DO ANIMAL", 2.33], ["2026-11-12", "Bovino", "Operacional", "DESL. DE CABEÇA", "ANIMAL GRANDE, DIFICULDADE AO DESLOCAR A CABEÇA", 2.0], ["2026-11-12", "Bovino", "Operacional", "MESA DE VÍSCERAS", "ANIMAL GRANDE, DIFICULDADE NA RETIRADA DAS VÍSCERAS", 1.0], ["2026-11-12", "Bovino", "Operacional", "SERRA DE CARCAÇA", "ANIMAL GRANDE, DIFICULDADE AO SERRAR A CARCAÇA", 1.5], ["2026-11-12", "Bovino", "Balança", "SISTEMA", "TROCA DE SISTEMA", 2.67], ["2026-11-12", "Suíno", "Operacional", "AREA SUJA", "AMARRAR O PÉ DO SUÍNO", 4.17], ["2026-11-12", "Suíno", "Operacional", "PATA DIANTEIRA", "TIRAR O PELO DO SUÍNO", 1.33], ["2026-11-12", "Suíno", "Operacional", "BALANÇA", "TROCA DE LOTE", 2.0], ["2026-11-12", "Suíno", "Operacional", "CORREDOR", "ARRASTAR SUÍNO NO CORREDOR, SUÍNO QUEBRADO.", 3.0]], "condenacao": [["2026-11-10", "Alterações de linfonodos", "WALTER VALADARES DE ABREU", "Guatu", "Condenação"], ["2026-11-10", "Tuberculose", "MARCOS VIERA DA COSTA E OUTROS", "Frigocosta", "Condenação"], ["2026-11-12", "Cisticercose", "JOSÉ EUSTÁQUIO DOS SANTOS", "Frigovitta", "Tratamento pelo frio"]], "condDias": ["2026-11-10", "2026-11-12"], "miudos": [], "carcaca": []}};
+const C = PLANO_.C, NOVO = PLANO_.NOVO;
+document.getElementById('url').value = 'https://script.google.com/macros/s/AKfycbw6bQ7rLliOIGbe2IBr5eZGw9poBz0A-tDef4FVNLRv6vsgZfI7G7ZvK7FsxPzJo5Q/exec';
+const MOVE = { '2026-02-08': '2026-02-07' };   // datas que mudam: aceita as duas ao localizar
+const d10 = v => String(v ?? '').slice(0, 10);
+const isD = v => /^\d{4}-\d{2}-\d{2}/.test(String(v ?? ''));
+const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+const igual = (a, b, col) => {
+  if (col === 1) return d10(a) === d10(b);
+  if (b === '') return a === '' || a === null || a === undefined;
+  if (typeof b === 'number') { const n = parseFloat(String(a ?? '').replace(',', '.')); return !isNaN(n) && Math.abs(n - b) < 1e-6; }
+  return String(a ?? '').trim() === String(b);
+};
+function log(t, cls) { const el = document.getElementById('log'); const d = document.createElement('div'); if (cls) d.className = cls; d.textContent = t; el.appendChild(d); el.scrollTop = el.scrollHeight; }
+async function call(action, data) {
+  const url = document.getElementById('url').value.trim();
+  if (!url.startsWith('https://script.google.com')) throw new Error('URL do Apps Script inválida');
+  const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ action, ...data }) });
+  const text = await resp.text(); let j;
+  try { j = JSON.parse(text); } catch (e) { throw new Error('Resposta não era JSON: ' + text.slice(0, 200)); }
+  if (!j.ok) throw new Error(j.error || 'Erro no servidor');
+  return j;
+}
+const serialISO = v => new Date(Math.round((v - 25569) * 86400 * 1000)).toISOString().slice(0, 10);
+const dataDe = v => typeof v === 'number' && v > 40000 && v < 60000 ? serialISO(v) : (isD(v) ? d10(v) : null);
+const kPar = r => [d10(r[0]), norm(r[1]), norm(r[2]), norm(r[3]), norm(r[4]), Math.round((parseFloat(String(r[5]).replace(',', '.')) || 0) * 100)].join('|');
+const ler = async aba => (await call('read', { sheet: aba })).values || [];
+const ABAS = [...new Set([...C.map(c => c.aba), 'Abates', 'Pesos', 'Paradas', 'Condenacao', 'Miudos', 'Carcaca'])];
+const kCond = r => [d10(r[0]), ...[1, 2, 3, 4].map(i => norm(String(r[i] ?? '').replace(/\s+/g, ' ')))].join('|');
+
+// Localiza cada correção na planilha atual e classifica: aplicar / já feita / diverge
+async function analisar() {
+  const L = {}; for (const a of ABAS) L[a] = await ler(a);
+  const res = [];
+  const usadas = new Set();
+  for (const c of C) {
+    const datas = new Set([c.data, MOVE[c.data]].filter(Boolean));
+    const rows = L[c.aba];
+    let cand = [];
+    rows.forEach((r, i) => {
+      if (i === 0 || !isD(r[0]) || !datas.has(d10(r[0]))) return;
+      if (c.chave !== null && norm(r[1]) !== norm(c.chave)) return;
+      if (c.chave === null && !(igual(r[c.col - 1], c.de, c.col) || igual(r[c.col - 1], c.para, c.col))) return;
+      cand.push(i);
+    });
+    if (c.chave === null) {           // Condenação: várias linhas iguais no mesmo dia — usa uma de cada vez
+      cand = cand.filter(i => !usadas.has(c.aba + i));
+      cand.sort((a, b) => igual(rows[b][c.col - 1], c.de, c.col) - igual(rows[a][c.col - 1], c.de, c.col));
+      cand = cand.slice(0, 1);
+    }
+    if (cand.length !== 1) { res.push({ c, st: 'diverge', msg: `${cand.length} linhas encontradas (esperado 1)` }); continue; }
+    const i = cand[0]; usadas.add(c.aba + i);
+    const atual = rows[i][c.col - 1];
+    if (igual(atual, c.para, c.col)) res.push({ c, st: 'ja', linha: i + 1, atual });
+    else if (igual(atual, c.de, c.col)) res.push({ c, st: 'aplicar', linha: i + 1, atual });
+    else res.push({ c, st: 'diverge', linha: i + 1, atual, msg: `está "${atual}", esperado "${c.de}"` });
+  }
+  // Linhas novas: só o que ainda não está na planilha (rodar de novo não duplica)
+  const abK = new Set(L.Abates.filter(r => isD(r[0])).map(r => d10(r[0]) + '|' + String(r[1]).trim()));
+  const peD = new Set(L.Pesos.map(r => dataDe(r[1])).filter(Boolean));
+  const paC = new Map(); L.Paradas.forEach((r, i) => { if (i && isD(r[0])) { const k = kPar(r); paC.set(k, (paC.get(k) || 0) + 1); } });
+  const paNovas = []; NOVO.paradas.forEach(r => { const k = kPar(r); if (paC.get(k) > 0) paC.set(k, paC.get(k) - 1); else paNovas.push(r); });
+  const coC = new Map(); const cd = new Set(NOVO.condDias);
+  L.Condenacao.forEach((r, i) => { if (i && isD(r[0]) && cd.has(d10(r[0]))) { const k = kCond(r); coC.set(k, (coC.get(k) || 0) + 1); } });
+  const coNovas = []; NOVO.condenacao.forEach(r => { const k = kCond(r); if (coC.get(k) > 0) coC.set(k, coC.get(k) - 1); else coNovas.push(r); });
+  const miD = new Set(L.Miudos.filter(r => isD(r[0])).map(r => d10(r[0]))), caD = new Set(L.Carcaca.filter(r => isD(r[0])).map(r => d10(r[0])));
+  res.novos = { abates: NOVO.abates.filter(r => !abK.has(r[0] + '|' + r[1])), pesos: NOVO.pesos.filter(r => !peD.has(r[1])), paradas: paNovas,
+    condenacao: coNovas, miudos: NOVO.miudos.filter(r => !miD.has(r[0])), carcaca: NOVO.carcaca.filter(r => !caD.has(r[0])) };
+  res.L = L;
+  return res;
+}
+const rot = c => `${c.aba} ${String(c.data).split('-').reverse().join('/')} ${c.chave ?? ''} col ${c.col}: ${c.de === '' ? '(vazio)' : c.de} → ${c.para === '' ? '(vazio)' : c.para}`;
+
+async function conferir() {
+  document.getElementById('log').innerHTML = ''; document.getElementById('btnGrav').disabled = true;
+  try {
+    log('Lendo a planilha atual...');
+    const res = await analisar();
+    const por = {};
+    res.forEach(r => { const k = r.c.aba; por[k] = por[k] || { aplicar: 0, ja: 0, diverge: 0 }; por[k][r.st]++; });
+    document.getElementById('resumo').innerHTML = '<table><tr><th>Aba</th><th class="r">A corrigir</th><th class="r">Já corrigidas</th><th class="r">Divergentes</th></tr>' +
+      Object.entries(por).map(([k, v]) => `<tr><td>${k}</td><td class="r">${v.aplicar}</td><td class="r">${v.ja}</td><td class="r">${v.diverge}</td></tr>`).join('') + '</table>';
+    const mot = {};
+    res.filter(r => r.st === 'aplicar' && r.c.aba !== 'Miudos').forEach(r => log('  ' + rot(r.c) + '  — ' + r.c.motivo));
+    const nm = res.filter(r => r.st === 'aplicar' && r.c.aba === 'Miudos').length;
+    if (nm) log(`  Miudos: ${nm} células (kg total do abate e % real recalculados; 08/02 → 07/02)`);
+    const nv = res.novos;
+    const dias = rs => [...new Set(rs.map(r => r[0]))].map(d => d.slice(8, 10) + '/' + d.slice(5, 7)).join(', ');
+    log(`Linhas novas — Abates: ${nv.abates.length} (${dias(nv.abates)}) · Pesos: ${nv.pesos.length} (${dias(nv.pesos.map(r => [r[1]]))}) · Paradas: ${nv.paradas.length} (${dias(nv.paradas)}) · Condenação: ${nv.condenacao.length} (${dias(nv.condenacao)}) · Miúdos: ${nv.miudos.length} e Carcaça: ${nv.carcaca.length} (${dias(nv.carcaca)})`);
+    const div = res.filter(r => r.st === 'diverge');
+    div.forEach(r => log('DIVERGE: ' + rot(r.c) + ' — ' + r.msg, 'err'));
+    const n = res.filter(r => r.st === 'aplicar').length + Object.values(nv).reduce((a, x) => a + x.length, 0);
+    if (div.length) log('Há divergências: nada será gravado. Me mande este registro.', 'err');
+    else if (!n) log('✓ Tudo já está na planilha. Nada a fazer.', 'ok');
+    else { log(`Pronto para gravar (${res.filter(r => r.st === 'aplicar').length} células a corrigir + linhas novas).`, 'ok'); document.getElementById('btnGrav').disabled = false; }
+  } catch (e) { log('✕ Erro: ' + e.message, 'err'); }
+}
+
+async function gravar() {
+  document.getElementById('btnGrav').disabled = true; document.getElementById('btnConf').disabled = true;
+  try {
+    log('— Gravando — relendo a planilha antes...');
+    const res = await analisar();
+    if (res.some(r => r.st === 'diverge')) throw new Error('A planilha mudou desde a conferência. Clique em Conferir de novo.');
+    const ap = res.filter(r => r.st === 'aplicar');
+    for (const aba of ABAS) {
+      const cells = ap.filter(r => r.c.aba === aba).map(r => ({ row: r.linha, col: r.c.col, expected: r.atual, value: r.c.para }));
+      for (let k = 0; k < cells.length; k += 150) {
+        const lote = cells.slice(k, k + 150);
+        await call('update', { sheet: aba, cells: lote });
+        log(`  ${aba}: ${lote.length} células gravadas`);
+      }
+    }
+    const nv = res.novos;
+    const add = async (aba, rs) => { if (!rs.length) return; await call('append', { sheet: aba, values: rs }); log(`  ${aba}: ${rs.length} linhas novas gravadas`); };
+    await add('Abates', nv.abates); await add('Pesos', nv.pesos); await add('Paradas', nv.paradas);
+    await add('Condenacao', nv.condenacao); await add('Miudos', nv.miudos); await add('Carcaca', nv.carcaca);
+    // Pesos: com o Apps Script antigo a data da coluna B vira número ao gravar — regrava como data
+    const pe = await ler('Pesos'), novasP = new Set(NOVO.pesos.map(r => r[1]));
+    const cp = []; pe.forEach((r, i) => { if (typeof r[1] === 'number' && novasP.has(dataDe(r[1]))) cp.push({ row: i + 1, col: 2, expected: r[1], value: dataDe(r[1]) }); });
+    if (cp.length) { await call('update', { sheet: 'Pesos', cells: cp }); log(`  Pesos: ${cp.length} datas acertadas`); }
+    log('Conferindo o que foi gravado...');
+    const depois = await analisar();
+    const falta = depois.filter(r => r.st !== 'ja');
+    const dn = depois.novos;
+    const nf = Object.entries(dn).filter(([k, v]) => v.length);
+    if (nf.length) falta.push({ c: { aba: 'Linhas novas', data: '', chave: nf.map(([k, v]) => `${v.length} ${k}`).join(', ') + ' ainda faltando', col: '-', de: '', para: '' }, st: 'faltando' });
+    const cnt = (rs, f) => { const m = new Map(); rs.forEach(r => { const k = f(r); if (k) m.set(k, (m.get(k) || 0) + 1); }); return m; };
+    const abC = cnt(depois.L.Abates.filter(r => isD(r[0])), r => d10(r[0]) + '|' + String(r[1]).trim());
+    for (const [k, v] of abC) if (v > 1 && k >= '2026-11') falta.push({ c: { aba: 'Abates duplicado', data: k, chave: '', col: '-', de: '', para: '' }, st: 'dup' });
+    const peC = cnt(depois.L.Pesos, r => dataDe(r[1]));
+    NOVO.pesos.forEach(r => { if (peC.get(r[1]) !== 1) falta.push({ c: { aba: 'Pesos', data: r[1], chave: `${peC.get(r[1]) || 0} linhas`, col: '-', de: '', para: '' }, st: 'dup' }); });
+    falta.forEach(r => log('NÃO CONFERE: ' + rot(r.c) + ' — ' + (r.msg || r.st), 'err'));
+    if (falta.length) log('✕ Algumas correções não conferem. Me mande este registro.', 'err');
+    else log(`✓ Concluído e conferido: ${depois.length} correções ok e todas as linhas novas na planilha, sem duplicatas.`, 'ok');
+  } catch (e) { log('✕ Erro: ' + e.message, 'err'); }
+  document.getElementById('btnConf').disabled = false;
+}
+</script>
+</body>
+</html>

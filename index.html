@@ -232,7 +232,7 @@ body.site-locked > *:not(#login-site-overlay){display:none !important}
       <span class="brand-name">Dashboard Operacional</span>
       <span class="brand-sub">Frigorífico Serradão · Atualização diária</span>
     </div>
-    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.11.12-232</span>
+    <span style="font-size:9px;color:#cbd5e1;margin-left:8px" title="Versão do código">v2026.11.16-233</span>
   </div>
   <div class="top-right">
     <div class="legend">
@@ -3035,12 +3035,20 @@ async function renderCondenacaoReal(tBov){
   const pctCondenados=totalAbatidos>0?(totalCondenados/totalAbatidos*100):0;
   const pctTratamento=totalAbatidos>0?(totalTratamento/totalAbatidos*100):0;
   const pctTotal=totalAbatidos>0?(totalAnimais/totalAbatidos*100):0;
+  // Período inteiro antes do primeiro registro de condenação de animal: não há dado (não é zero)
+  const _datasCond=(condenacaoCache||[]).filter(r=>r.motivo||r.frigorifico).map(r=>r.data).sort();
+  const _semRegistro=!_datasCond.length||(diasFiltrados.length&&diasFiltrados[diasFiltrados.length-1].data<_datasCond[0]);
+  if(_semRegistro){
+    ['cond-animais-total','cond-animais-trat-total','cond-animais-pct','cond-animais-pct-trat'].forEach(id=>set(id,'—'));
+    set('cond-animais-total-geral','sem registros no período');set('cond-animais-pct-geral','');
+  }else{
   set('cond-animais-total',fmt(totalCondenados)||'0');
   set('cond-animais-total-geral',`/ ${totalAnimais} total`);
   set('cond-animais-trat-total',totalTratamento);
   set('cond-animais-pct',pctCondenados.toFixed(3)+'%');
   set('cond-animais-pct-geral',`/ ${pctTotal.toFixed(3)}% total`);
   set('cond-animais-pct-trat',pctTratamento.toFixed(3)+'%');
+  }
   set('cond-animais-abatidos',`${fmt(totalAbatidos)} abatidos`);
   const listaEl=document.getElementById('cond-animais-lista');
   if(listaEl){
